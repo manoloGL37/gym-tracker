@@ -2,8 +2,8 @@
   "name": "Gym Tracker",
   "short_name": "GymTracker",
   "display": "standalone",
-  "scope": "./",
-  "start_url": "./",
+  "scope": "/",
+  "start_url": "/",
   "theme_color": "#F97316",
   "background_color": "#fff7ed",
   "icons": [
