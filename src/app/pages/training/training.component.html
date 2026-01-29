@@ -1,0 +1,85 @@
+<div class="flex flex-col min-h-screen bg-gray-50 pb-20">
+  <!-- Routine name -->
+  <div class="px-4 pt-4 pb-4 bg-gradient-to-br from-orange-500 to-orange-700 text-white shadow-lg">
+    <h1 class="text-xl font-bold">{{ training?.routineName || '' }}</h1>
+      <div class="text-orange-50 text-sm mt-1">{{ t.t('training.activeSession') }}</div>
+  </div>
+
+  <!-- Exercises list -->
+  <div class="flex-1 px-4 py-4 overflow-y-auto">
+    @if (training) {
+      @for (exercise of training.exercises; track exercise.exerciseId) {
+        <div class="bg-white rounded-2xl shadow-md border border-gray-100 p-4 mb-4">
+          <h2 class="text-lg font-bold mb-4 text-gray-900">{{ exercise.name }}</h2>
+          <div class="space-y-4">
+            @for (set of exercise.sets; track set.setIndex; let i = $index) {
+              <div class="bg-gray-50 rounded-xl p-4 border border-gray-200">
+                <!-- Set label -->
+                <div class="text-sm font-semibold text-gray-600 mb-3">{{ t.t('training.set', { number: i + 1 }) }}</div>
+                <!-- Input row (horizontal) -->
+                <div class="flex items-center gap-3 mb-2">
+                  <div class="flex-1">
+                    <label class="block text-xs font-bold text-gray-700 uppercase tracking-wide mb-2">{{ t.t('training.reps') }}</label>
+                    <div class="relative">
+                      <input
+                        type="number"
+                        inputmode="numeric"
+                        pattern="[0-9]*"
+                        [(ngModel)]="set.reps"
+                        (ngModelChange)="onSetChange()"
+                        class="w-full text-center text-2xl font-bold rounded-xl border-2 border-orange-400 bg-white py-4 pr-12 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 focus:outline-none transition-all"
+                        placeholder="0"
+                        autocomplete="off"
+                      />
+                      <span class="absolute right-3 top-1/2 -translate-y-1/2 text-sm font-bold text-gray-400 uppercase pointer-events-none">reps</span>
+                    </div>
+                  </div>
+                  <div class="flex-1">
+                    <label class="block text-xs font-bold text-gray-700 uppercase tracking-wide mb-2">{{ t.t('training.weight') }}</label>
+                    <div class="relative">
+                      <input
+                        type="number"
+                        inputmode="decimal"
+                        pattern="[0-9.]*"
+                        [(ngModel)]="set.weight"
+                        (ngModelChange)="onSetChange()"
+                        class="w-full text-center text-2xl font-bold rounded-xl border-2 border-orange-400 bg-white py-4 pr-10 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 focus:outline-none transition-all"
+                        placeholder="0"
+                        autocomplete="off"
+                      />
+                      <span class="absolute right-3 top-1/2 -translate-y-1/2 text-sm font-bold text-gray-400 uppercase pointer-events-none">kg</span>
+                    </div>
+                  </div>
+                </div>
+                <!-- Last workout reference (below inputs, muted) -->
+                @let last = getLastSetReference(exercise.name, set.setIndex);
+                <div class="text-xs text-gray-400 text-center pt-1">
+                    @if (last) {
+                      <span>{{ t.t('training.lastSet', { reps: (last.reps !== null && last.reps !== undefined ? last.reps : '—'), weight: (last.weight !== null && last.weight !== undefined ? last.weight : '—') }) }}</span>
+                    } @else {
+                      <span>{{ t.t('training.lastSet', { reps: '—', weight: '—' }) }}</span>
+                    }
+                </div>
+              </div>
+            }
+            <div class="mt-4 pt-4 border-t border-gray-200">
+              <label class="block text-xs font-semibold text-gray-600 mb-2">{{ t.t('training.observationPlaceholder') }}</label>
+              <textarea [(ngModel)]="exercise.observation" (ngModelChange)="onSetChange()" rows="3" class="w-full border-2 border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500 bg-white" placeholder="{{ t.t('training.observationPlaceholder') }}"></textarea>
+            </div>
+          </div>
+        </div>
+      }
+    }
+  </div>
+
+  <!-- Finish training button -->
+  <div class="fixed bottom-16 left-0 right-0 bg-white border-t border-gray-200 p-4 z-20 shadow-lg">
+    <button
+      class="w-full bg-green-600 hover:bg-green-700 text-white text-lg font-bold rounded-xl py-4 shadow-lg active:scale-95 focus:outline-none focus:ring-4 focus:ring-green-300 transition-all"
+      type="button"
+      (click)="finishTraining()"
+    >
+      {{ t.t('training.finish') }}
+    </button>
+  </div>
+</div>

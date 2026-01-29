@@ -1,0 +1,16 @@
+/* Layout and nav bar handled by Tailwind. */
+.active-nav-tab {
+	@apply text-orange-600 bg-orange-50;
+}
+
+.active-nav-tab svg {
+	@apply stroke-orange-600;
+}
+
+a:not(.active-nav-tab) {
+	@apply text-gray-500;
+}
+
+a:not(.active-nav-tab) svg {
+	@apply stroke-gray-400;
+}

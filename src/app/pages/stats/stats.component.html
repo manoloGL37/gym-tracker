@@ -1,0 +1,120 @@
+<div class="flex flex-col min-h-screen bg-gray-50 pb-20">
+  <!-- Header -->
+  <div class="bg-gradient-to-br from-orange-500 to-orange-700 text-white px-4 pt-4 pb-6 shadow-lg">
+    <h1 class="text-2xl font-bold mb-3">{{ t.t('stats.title') }}</h1>
+    
+    <!-- Period selector -->
+    <div class="flex gap-2">
+      <button 
+        (click)="setPeriod('week')" 
+        [class.bg-white]="selectedPeriod() === 'week'" 
+        [class.text-orange-600]="selectedPeriod() === 'week'" 
+        [class.bg-orange-600]="selectedPeriod() !== 'week'" 
+        [class.text-white]="selectedPeriod() !== 'week'"
+        class="px-4 py-2 rounded-lg font-semibold text-sm shadow transition-all">
+        {{ t.t('stats.weekly') }}
+      </button>
+      <button 
+        (click)="setPeriod('month')" 
+        [class.bg-white]="selectedPeriod() === 'month'" 
+        [class.text-orange-600]="selectedPeriod() === 'month'" 
+        [class.bg-orange-600]="selectedPeriod() !== 'month'" 
+        [class.text-white]="selectedPeriod() !== 'month'"
+        class="px-4 py-2 rounded-lg font-semibold text-sm shadow transition-all">
+        {{ t.t('stats.monthly') }}
+      </button>
+    </div>
+  </div>
+
+  <div class="px-4 pt-4">
+    <div *ngIf="!loading()" class="space-y-4">
+      <!-- Workout Count -->
+      <div class="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
+        <div class="flex items-start justify-between">
+          <div>
+            <div class="text-gray-600 text-sm font-semibold mb-1">{{ t.t('stats.workoutCount') }}</div>
+            <div class="text-4xl font-black text-gray-900">{{ currentStats().workoutCount }}</div>
+          </div>
+          <div *ngIf="getTrend(currentStats().workoutCount, previousStats().workoutCount) !== 'none'" 
+               class="flex items-center gap-1 px-3 py-1.5 rounded-full text-sm font-bold shadow-sm"
+               [ngClass]="{
+                 'bg-green-500 text-white': getTrend(currentStats().workoutCount, previousStats().workoutCount) === 'up',
+                 'bg-red-500 text-white': getTrend(currentStats().workoutCount, previousStats().workoutCount) === 'down',
+                 'bg-gray-300 text-gray-800': getTrend(currentStats().workoutCount, previousStats().workoutCount) === 'equal'
+               }">
+            <span *ngIf="getTrend(currentStats().workoutCount, previousStats().workoutCount) === 'up'">↑</span>
+            <span *ngIf="getTrend(currentStats().workoutCount, previousStats().workoutCount) === 'down'">↓</span>
+            <span *ngIf="getTrend(currentStats().workoutCount, previousStats().workoutCount) === 'equal'">→</span>
+            <span>{{ previousStats().workoutCount }}</span>
+          </div>
+        </div>
+        <div class="text-xs text-gray-500 mt-2 font-medium">{{ t.t('stats.comparedToPrevious') }}</div>
+      </div>
+
+      <!-- Total Volume -->
+      <div class="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
+        <div class="flex items-start justify-between">
+          <div>
+            <div class="text-gray-600 text-sm font-semibold mb-1">{{ t.t('stats.totalVolume') }}</div>
+            <div class="text-4xl font-black text-gray-900">{{ currentStats().totalVolume | number:'1.0-0' }}</div>
+            <div class="text-sm text-gray-600 mt-1 font-medium">kg</div>
+          </div>
+          <div *ngIf="getTrend(currentStats().totalVolume, previousStats().totalVolume) !== 'none'" 
+               class="flex items-center gap-1 px-3 py-1.5 rounded-full text-sm font-bold shadow-sm"
+               [ngClass]="{
+                 'bg-green-500 text-white': getTrend(currentStats().totalVolume, previousStats().totalVolume) === 'up',
+                 'bg-red-500 text-white': getTrend(currentStats().totalVolume, previousStats().totalVolume) === 'down',
+                 'bg-gray-300 text-gray-800': getTrend(currentStats().totalVolume, previousStats().totalVolume) === 'equal'
+               }">
+            <span *ngIf="getTrend(currentStats().totalVolume, previousStats().totalVolume) === 'up'">↑</span>
+            <span *ngIf="getTrend(currentStats().totalVolume, previousStats().totalVolume) === 'down'">↓</span>
+            <span *ngIf="getTrend(currentStats().totalVolume, previousStats().totalVolume) === 'equal'">→</span>
+            <span>{{ previousStats().totalVolume | number:'1.0-0' }}</span>
+          </div>
+        </div>
+        <div class="text-xs text-gray-500 mt-2 font-medium">{{ t.t('stats.comparedToPrevious') }}</div>
+      </div>
+
+      <!-- Daily Distribution -->
+      <div class="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
+        <div class="text-gray-900 text-base font-bold mb-4">{{ t.t('stats.dailyDistribution') }}</div>
+        <div class="space-y-3">
+          <div *ngFor="let day of currentStats().dailyDistribution" class="flex items-center gap-3">
+            <div class="text-xs font-bold text-gray-700 w-12">
+              {{ day.date | date:'EEE d' }}
+            </div>
+            <div class="flex-1 h-9 bg-gray-100 rounded-lg overflow-hidden relative">
+              <div 
+                class="h-full rounded-lg transition-all shadow-sm"
+                [ngClass]="{
+                  'bg-gradient-to-r from-orange-500 to-orange-600': day.count > 0,
+                  'bg-gray-100': day.count === 0
+                }"
+                [style.width.%]="day.volume > 0 ? (day.volume / getMaxVolume() * 100) : 0">
+              </div>
+              <div class="absolute inset-0 flex items-center justify-between px-3">
+                <span *ngIf="day.count > 0" class="text-xs font-bold text-gray-900">
+                  {{ day.count }} {{ day.count === 1 ? t.t('stats.workout') : t.t('stats.workouts') }}
+                </span>
+                <span *ngIf="day.volume > 0" class="text-xs font-bold text-gray-900 ml-auto">
+                  {{ day.volume | number:'1.0-0' }} kg
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Empty state -->
+      <div *ngIf="currentStats().workoutCount === 0" class="text-center py-10">
+        <div class="text-gray-400 text-base mb-2">{{ t.t('stats.noData') }}</div>
+        <div class="text-gray-400 text-sm">{{ t.t('stats.startTraining') }}</div>
+      </div>
+    </div>
+
+    <!-- Loading -->
+    <div *ngIf="loading()" class="text-center py-10">
+      <div class="text-gray-400">{{ t.t('stats.loading') }}</div>
+    </div>
+  </div>
+</div>

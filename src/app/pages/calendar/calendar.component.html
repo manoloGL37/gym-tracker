@@ -1,0 +1,86 @@
+<div class="flex flex-col flex-1 bg-gray-50">
+  <!-- Header -->
+  <div class="bg-gradient-to-br from-orange-500 to-orange-700 text-white px-4 pt-4 pb-6 shadow-lg">
+    <h1 class="text-2xl font-bold mb-3">{{ t.t('calendar.title') }}</h1>
+    <div class="flex gap-2">
+      <button (click)="setView('week')" [class.bg-white]="view==='week'" [class.text-orange-600]="view==='week'" [class.bg-orange-100]="view!=='week'" [class.text-gray-700]="view!=='week'" class="px-4 py-2 rounded-lg font-semibold text-sm shadow transition-all">{{ t.t('calendar.weekly') }}</button>
+      <button (click)="setView('list')" [class.bg-white]="view==='list'" [class.text-orange-600]="view==='list'" [class.bg-orange-100]="view!=='list'" [class.text-gray-700]="view!=='list'" class="px-4 py-2 rounded-lg font-semibold text-sm shadow transition-all">{{ t.t('calendar.list') }}</button>
+    </div>
+  </div>
+  
+  <div class="p-4">
+
+  <!-- WEEKLY VIEW -->
+  @if (view==='week') {
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-4">
+      <div class="flex items-center justify-between mb-2">
+        <button (click)="prevWeek()" class="w-10 h-10 flex items-center justify-center rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold transition-colors">&#8592;</button>
+        <div class="font-bold text-lg text-gray-900">
+          {{ weekDays[0] | date:'MMM d' }} - {{ weekDays[6] | date:'MMM d, yyyy' }}
+        </div>
+        <button (click)="nextWeek()" class="w-10 h-10 flex items-center justify-center rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold transition-colors">&#8594;</button>
+      </div>
+      <!-- Weekly summary -->
+      <div class="text-sm text-gray-500 text-center">
+        {{ t.t('calendar.workoutsThisWeek', { count: weekWorkoutCount, plural: weekWorkoutCount === 1 ? '' : 's' }) }}
+      </div>
+    </div>
+    <div class="space-y-3">
+      @for (day of weekDays; track day; let i = $index) {
+        <div 
+          class="rounded-xl p-4 transition-all"
+          [ngClass]="getWorkoutsForDay(day).length
+            ? 'bg-white border-2 border-orange-200 shadow-md'
+            : 'bg-gray-100 border-2 border-gray-200'"
+        >
+          <div class="flex items-center gap-4">
+            <div class="flex-shrink-0 w-14 h-14 flex flex-col items-center justify-center rounded-xl shadow-sm"
+              [ngClass]="getWorkoutsForDay(day).length
+                ? 'bg-orange-500 text-white'
+                : 'bg-gray-200 text-gray-500'"
+            >
+              <div class="text-[9px] font-bold uppercase tracking-wide">
+                {{ [t.t('calendar.dayMon'), t.t('calendar.dayTue'), t.t('calendar.dayWed'), t.t('calendar.dayThu'), t.t('calendar.dayFri'), t.t('calendar.daySat'), t.t('calendar.daySun')][i] }}
+              </div>
+              <div class="text-xl font-black leading-none">
+                {{ day | date:'d' }}
+              </div>
+            </div>
+            <div class="flex-1 min-w-0">
+              @if (getWorkoutsForDay(day).length) {
+                <div class="space-y-2">
+                  @for (w of getWorkoutsForDay(day); track w.id) {
+                    <a [routerLink]="['/calendar', w.id]" class="block bg-white border-l-4 border-orange-500 text-gray-900 rounded-lg px-3 py-2 shadow-sm hover:bg-orange-50 transition">
+                      <div class="font-bold text-sm">{{ w.routineName }}</div>
+                      <div class="text-xs text-gray-700 mt-0.5">{{ w.exercises.length }} {{ t.t('calendar.exercises') }}</div>
+                    </a>
+                  }
+                </div>
+              } @else {
+                <div class="text-gray-500 text-sm font-medium">{{ t.t('calendar.restDay') }}</div>
+              }
+            </div>
+          </div>
+        </div>
+      }
+    </div>
+  }
+
+  <!-- LIST VIEW -->
+  @if (view==='list') {
+    @for (w of workouts; track w.id) {
+      <div class="bg-white rounded-xl shadow-md border-l-4 border-orange-600 mb-3 px-4 py-4 flex items-center justify-between">
+        <a [routerLink]="['/calendar', w.id]" class="flex-1 min-w-0 block">
+          <div class="font-bold text-base text-gray-900">{{ w.routineName }}</div>
+          <div class="text-gray-500 text-sm mt-1">{{ w.finishedAt | date:'mediumDate' }}</div>
+          <div class="text-gray-600 text-sm mt-1 font-medium">{{ w.exercises.length }} {{ t.t('calendar.exercises') }}</div>
+        </a>
+        <button (click)="onDeleteWorkout(w)" class="ml-4 px-3 py-1.5 rounded-lg bg-red-100 text-red-700 font-semibold text-xs shadow hover:bg-red-200 transition-all">{{ t.t('calendar.delete') }}</button>
+      </div>
+    }
+    @if (!workouts.length) {
+      <div class="text-center text-gray-400 mt-10">{{ t.t('calendar.noWorkouts') }}</div>
+    }
+  }
+  </div>
+</div>

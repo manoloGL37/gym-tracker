@@ -1,0 +1,46 @@
+<div class="flex flex-col flex-1 bg-gradient-to-b from-gray-50 to-gray-100">
+  <!-- Hero header -->
+  <div class="bg-gradient-to-r from-orange-600 to-red-600 text-white px-4 pt-6 pb-8 shadow-lg relative">
+    <a routerLink="/settings" class="absolute top-4 right-4 p-2 hover:bg-white/20 rounded-lg transition-all" [attr.aria-label]="t.t('settings.title')">
+      <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+    </a>
+    <h1 class="text-3xl font-black">{{ t.t('home.title') }}</h1>
+    <div class="text-orange-100 text-base mt-1">
+      {{ t.t('home.today') }} · {{ formattedDate() }}
+    </div>
+  </div>
+
+  <div class="px-4 pt-6">
+    <!-- Start training button -->
+    <button
+      (click)="startTraining()"
+      class="w-full bg-orange-600 hover:bg-orange-700 text-white text-xl font-bold rounded-xl py-5 mb-3 shadow-lg active:scale-95 focus:outline-none focus:ring-4 focus:ring-orange-300 transition-all"
+    >
+      {{ t.t('home.startTraining') }}
+    </button>
+
+    <!-- Add workout button -->
+    <button
+      (click)="addWorkout()"
+      class="w-full bg-white border-2 border-gray-300 text-gray-800 text-base font-semibold rounded-xl py-4 mb-8 shadow-md active:scale-95 focus:outline-none focus:ring-4 focus:ring-orange-200 transition-transform"
+    >
+      {{ t.t('addWorkout.title') }}
+    </button>
+
+    <!-- Last workout section -->
+    <div class="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
+      <h2 class="text-lg font-bold mb-3 text-gray-900">{{ t.t('home.lastWorkout') }}</h2>
+      @if (lastWorkout) {
+        <div class="bg-white border-l-4 border-orange-500 rounded-lg p-4 shadow-sm">
+          <div class="text-base font-bold text-gray-900 mb-1">{{ lastWorkout.routineName }}</div>
+          <div class="text-gray-700 text-sm mb-1">{{ lastWorkout.finishedAt | date:'short' }}</div>
+          <div class="text-gray-700 text-sm font-medium">
+            {{ lastWorkout.exercises.length }} {{ t.t('calendar.list') | lowercase }}
+          </div>
+        </div>
+      } @else {
+        <div class="text-gray-400 text-center py-4">{{ t.t('calendar.noWorkouts') }}</div>
+      }
+    </div>
+  </div>
+</div>

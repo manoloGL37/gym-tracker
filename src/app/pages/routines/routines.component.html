@@ -1,0 +1,76 @@
+<div class="flex flex-col flex-1 bg-gray-50 pb-4">
+  <!-- Header -->
+  <div class="bg-gradient-to-br from-orange-500 to-orange-700 text-white px-4 pt-4 pb-6 shadow-lg">
+    <h1 class="text-2xl font-bold mb-1">{{ t.t('routines.title') }}</h1>
+    <div class="text-orange-100 text-sm">{{ t.t('routines.subtitle') }}</div>
+  </div>
+
+  <div class="flex-1 px-4 pt-4">
+    @if (!loading && routines.length) {
+      @for (routine of routines; track routine.id) {
+        <div class="bg-white rounded-2xl shadow-md border border-gray-100 mb-3 px-4 py-4 flex items-center justify-between">
+          <div>
+            <div class="text-lg font-bold text-gray-900 mb-1">{{ routine.name }}</div>
+            <div class="text-gray-500 text-sm font-medium">{{ routine.exercises.length }} {{ t.t('routines.exercises') }}</div>
+          </div>
+          <div class="flex gap-2">
+            <button (click)="startEdit(routine)" class="text-orange-600 text-sm font-bold px-3 py-1.5 rounded-lg bg-orange-50 hover:bg-orange-100 transition">{{ t.t('routines.edit') }}</button>
+            <button (click)="deleteRoutine(routine)" class="text-red-600 text-sm font-bold px-3 py-1.5 rounded-lg bg-red-50 hover:bg-red-100 transition">{{ t.t('routines.delete') }}</button>
+          </div>
+        </div>
+      }
+    } @else {
+      <div class="text-center text-gray-400 mt-10 font-medium">{{ t.t('routines.noRoutines') }}</div>
+    }
+
+    <!-- Create/Edit form -->
+    <div class="bg-white rounded-2xl shadow-md border border-gray-100 mt-6 px-4 py-5">
+      <h2 class="text-lg font-bold mb-3 text-gray-900">{{ editingRoutine ? t.t('routines.editRoutine') : t.t('routines.createRoutine') }}</h2>
+      <form (ngSubmit)="saveRoutine()" autocomplete="off">
+        <input
+          type="text"
+          [(ngModel)]="newRoutineName"
+          name="routineName"
+          placeholder="{{ t.t('routines.routineName') }}"
+          class="w-full mb-3 px-4 py-3 border-2 border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-medium"
+          required
+        />
+        <div class="mb-3">
+          @if (exercises.length) {
+            <div class="space-y-2">
+              @for (exercise of exercises; track exercise.id; let i = $index) {
+                <div class="flex items-center gap-2 bg-gray-50 rounded-lg p-2">
+                  <input
+                    type="text"
+                    [(ngModel)]="exercise.name"
+                    (ngModelChange)="updateName(i, $event)"
+                    name="exerciseName{{i}}"
+                    class="flex-1 px-3 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium"
+                    autocomplete="off"
+                    placeholder="{{ t.t('routines.exerciseName') }}"
+                  />
+                  <input
+                    type="number"
+                    [(ngModel)]="exercise.setsCount"
+                    (ngModelChange)="updateSets(i, $event)"
+                    name="exerciseSets{{i}}"
+                    min="1"
+                    max="10"
+                    class="w-16 px-2 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-center font-bold"
+                    placeholder="{{ t.t('routines.sets') }}"
+                  />
+                  <button type="button" (click)="removeExercise(i)" class="ml-2 w-10 h-10 flex items-center justify-center rounded-full bg-red-600 text-white text-2xl font-bold shadow hover:bg-red-700 active:scale-95 transition-all" [attr.aria-label]="t.t('routines.delete')">×</button>
+                </div>
+              }
+            </div>
+          }
+          <button type="button" (click)="addExerciseBlock()" class="mt-3 w-full bg-blue-600 hover:bg-blue-700 text-white rounded-xl px-3 py-3 font-bold shadow-md active:scale-95 transition-all">{{ t.t('routines.addExercise') }}</button>
+        </div>
+        <div class="flex gap-3 mt-4">
+          <button type="submit" class="flex-1 bg-green-600 hover:bg-green-700 text-white rounded-xl px-4 py-3 font-bold shadow-md active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed" [disabled]="!newRoutineName.trim() || !exercises.length">{{ editingRoutine ? t.t('routines.save') : t.t('routines.create') }}</button>
+          <button type="button" (click)="cancelEdit()" class="flex-1 bg-white border-2 border-gray-300 text-gray-800 rounded-xl px-4 py-3 font-bold shadow-md active:scale-95 transition-transform">{{ t.t('routines.cancel') }}</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
