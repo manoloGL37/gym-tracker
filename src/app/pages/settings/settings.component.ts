@@ -18,9 +18,53 @@ export class SettingsComponent {
   backupService = inject(BackupService);
   router = inject(Router);
 
+  // Read backup status directly from localStorage
+  lastBackupTime = computed(() => {
+    const stored = localStorage.getItem('backup:lastSuccessAt');
+    return stored ? new Date(stored) : null;
+  });
+  lastServerStatus = computed(() => {
+    const status = localStorage.getItem('backup:lastStatus');
+    if (status === 'online' || status === 'offline') return status;
+    return 'unknown';
+  });
+
   importError = signal<string | null>(null);
   importConfirm = signal(false);
   importData: string | null = null;
+
+  // Manual restore from server
+  restoreError = signal<string | null>(null);
+  showRestoreConfirm = signal(false);
+    requestRestoreFromServer() {
+      this.showRestoreConfirm.set(true);
+      this.restoreError.set(null);
+    }
+
+    cancelRestoreFromServer() {
+      this.showRestoreConfirm.set(false);
+      this.restoreError.set(null);
+    }
+
+    async confirmRestoreFromServer() {
+      this.restoreError.set(null);
+      const error = await this.backupService.restoreFromServer();
+      if (error) {
+        this.restoreError.set(error);
+        this.showRestoreConfirm.set(false);
+        return;
+      }
+      window.location.reload();
+    }
+  /**
+   * Format the last server status for display
+   */
+  formatLastServerStatus(): string {
+    const status = this.lastServerStatus();
+    if (status === 'online') return this.t.t('settings.backup.statusOnline');
+    if (status === 'offline') return this.t.t('settings.backup.statusOffline');
+    return this.t.t('settings.backup.statusUnknown');
+  }
 
   goBack() {
     this.router.navigate(['/home']);
@@ -80,4 +124,24 @@ export class SettingsComponent {
     this.importConfirm.set(false);
     this.importData = null;
   }
+
+  /**
+   * Format the last backup time for display
+   */
+  formatLastBackup(): string {
+    const time = this.lastBackupTime();
+    if (!time) return this.t.t('settings.backup.neverBackedUp');
+    
+    const now = new Date();
+    const diff = now.getTime() - time.getTime();
+    const minutes = Math.floor(diff / 60000);
+    const hours = Math.floor(minutes / 60);
+    const days = Math.floor(hours / 24);
+
+    if (minutes < 1) return this.t.t('settings.backup.justNow');
+    if (minutes < 60) return this.t.t('settings.backup.minutesAgo').replace('{n}', minutes.toString());
+    if (hours < 24) return this.t.t('settings.backup.hoursAgo').replace('{n}', hours.toString());
+    return this.t.t('settings.backup.daysAgo').replace('{n}', days.toString());
+  }
 }
+

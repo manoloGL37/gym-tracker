@@ -18,6 +18,7 @@ export class TrainingComponent implements OnInit {
   training: ActiveTraining | null = null;
   loading = true;
   previousWorkouts: WorkoutHistory[] = [];
+  showConfirmFinish = false;
   t = inject(TranslationService);
 
   constructor(private router: Router) {}
@@ -82,7 +83,39 @@ export class TrainingComponent implements OnInit {
     }
   }
 
-  async finishTraining() {
+  /**
+   * Check if there are incomplete sets (no reps or weight entered)
+   */
+  hasIncompleteSets(): boolean {
+    if (!this.training) return false;
+    for (const exercise of this.training.exercises) {
+      for (const set of exercise.sets) {
+        if (set.reps === null || set.weight === null) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Show confirmation dialog when user presses Finish
+   */
+  requestFinish() {
+    this.showConfirmFinish = true;
+  }
+
+  /**
+   * Cancel the finish action
+   */
+  cancelFinish() {
+    this.showConfirmFinish = false;
+  }
+
+  /**
+   * Confirm and actually finish the workout
+   */
+  async confirmFinish() {
     if (this.training) {
       const finishedAt = new Date().toISOString();
       const { id, ...rest } = this.training;

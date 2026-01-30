@@ -1,4 +1,4 @@
-<div class="flex flex-col min-h-screen bg-gray-50 pb-20">
+<div class="flex flex-col bg-gray-50" style="min-height: 100dvh;">
   <!-- Routine name -->
   <div class="px-4 pt-4 pb-4 bg-gradient-to-br from-orange-500 to-orange-700 text-white shadow-lg">
     <h1 class="text-xl font-bold">{{ training?.routineName || '' }}</h1>
@@ -73,13 +73,40 @@
   </div>
 
   <!-- Finish training button -->
-  <div class="fixed bottom-16 left-0 right-0 bg-white border-t border-gray-200 p-4 z-20 shadow-lg">
+  <div class="fixed left-0 right-0 bg-white border-t border-gray-200 p-4 z-20 shadow-lg" style="bottom: var(--bottom-nav-total-height);">
     <button
       class="w-full bg-green-600 hover:bg-green-700 text-white text-lg font-bold rounded-xl py-4 shadow-lg active:scale-95 focus:outline-none focus:ring-4 focus:ring-green-300 transition-all"
       type="button"
-      (click)="finishTraining()"
+      (click)="requestFinish()"
     >
       {{ t.t('training.finish') }}
     </button>
   </div>
+
+  <!-- Confirmation dialog -->
+  @if (showConfirmFinish) {
+    <div class="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50" (click)="cancelFinish()">
+      <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6" (click)="$event.stopPropagation()">
+        <h2 class="text-xl font-bold text-gray-900 mb-3">{{ t.t('training.confirmFinish.title') }}</h2>
+        <p class="text-gray-600 mb-2">{{ t.t('training.confirmFinish.body') }}</p>
+        @if (hasIncompleteSets()) {
+          <p class="text-orange-600 font-medium text-sm mt-2 mb-4">{{ t.t('training.confirmFinish.incompleteWarning') }}</p>
+        }
+        <div class="flex gap-3 mt-6">
+          <button
+            (click)="cancelFinish()"
+            class="flex-1 px-4 py-3 rounded-xl font-semibold text-gray-700 bg-gray-100 hover:bg-gray-200 transition-all focus:outline-none focus:ring-2 focus:ring-gray-400"
+          >
+            {{ t.t('training.confirmFinish.cancel') }}
+          </button>
+          <button
+            (click)="confirmFinish()"
+            class="flex-1 px-4 py-3 rounded-xl font-semibold text-white bg-orange-600 hover:bg-orange-700 transition-all focus:outline-none focus:ring-2 focus:ring-orange-500"
+          >
+            {{ t.t('training.confirmFinish.confirm') }}
+          </button>
+        </div>
+      </div>
+    </div>
+  }
 </div>

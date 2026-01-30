@@ -2,6 +2,30 @@ import { BodyWeightEntry } from './body-weight.model';
 
 const STORE_NAME = 'bodyWeight';
 
+/**
+ * Helper to get BackupService lazily to avoid circular dependencies
+ */
+let backupServiceInstance: any = null;
+function getBackupService() {
+  if (!backupServiceInstance) {
+    // Lazy import to avoid circular dependency
+    import('../services/backup.service').then(m => {
+      backupServiceInstance = new m.BackupService();
+    });
+  }
+  return backupServiceInstance;
+}
+
+function triggerBackupAsync() {
+  // Async, non-blocking backup trigger
+  setTimeout(() => {
+    const service = getBackupService();
+    if (service) {
+      service.triggerBackup().catch(() => {/* silent */});
+    }
+  }, 0);
+}
+
 export class BodyWeightRepository {
   static dbPromise: Promise<IDBDatabase> = openDB();
 
@@ -37,7 +61,10 @@ export class BodyWeightRepository {
     const store = await this.getStore('readwrite');
     return new Promise((resolve, reject) => {
       const req = store.put(entry, entry.date);
-      req.onsuccess = () => resolve();
+      req.onsuccess = () => {
+        resolve();
+        triggerBackupAsync(); // Trigger backup after weight entry saved
+      };
       req.onerror = () => reject(req.error);
     });
   }
@@ -46,7 +73,10 @@ export class BodyWeightRepository {
     const store = await this.getStore('readwrite');
     return new Promise((resolve, reject) => {
       const req = store.delete(date);
-      req.onsuccess = () => resolve();
+      req.onsuccess = () => {
+        resolve();
+        triggerBackupAsync(); // Trigger backup after weight entry deleted
+      };
       req.onerror = () => reject(req.error);
     });
   }
