@@ -32,39 +32,47 @@
           [(ngModel)]="newRoutineName"
           name="routineName"
           placeholder="{{ t.t('routines.routineName') }}"
-          class="w-full mb-3 px-4 py-3 border-2 border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-medium"
+          class="w-full mb-3 px-4 py-3 border-2 border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500 font-medium"
           required
         />
         <div class="mb-3">
           @if (exercises.length) {
-            <div class="space-y-2">
+            <div class="space-y-3">
               @for (exercise of exercises; track exercise.id; let i = $index) {
-                <div class="flex items-center gap-2 bg-gray-50 rounded-lg p-2">
-                  <input
-                    type="text"
-                    [(ngModel)]="exercise.name"
-                    (ngModelChange)="updateName(i, $event)"
-                    name="exerciseName{{i}}"
-                    class="flex-1 px-3 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium"
-                    autocomplete="off"
-                    placeholder="{{ t.t('routines.exerciseName') }}"
-                  />
-                  <input
-                    type="number"
-                    [(ngModel)]="exercise.setsCount"
-                    (ngModelChange)="updateSets(i, $event)"
-                    name="exerciseSets{{i}}"
-                    min="1"
-                    max="10"
-                    class="w-16 px-2 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-center font-bold"
-                    placeholder="{{ t.t('routines.sets') }}"
-                  />
-                  <button type="button" (click)="removeExercise(i)" class="ml-2 w-10 h-10 flex items-center justify-center rounded-full bg-red-600 text-white text-2xl font-bold shadow hover:bg-red-700 active:scale-95 transition-all" [attr.aria-label]="t.t('routines.delete')">×</button>
+                <div class="bg-gray-50 rounded-xl p-3 border border-gray-200">
+                  <div class="flex items-center gap-2 mb-2">
+                    <input
+                      type="text"
+                      [(ngModel)]="exercise.name"
+                      (ngModelChange)="updateName(i, $event)"
+                      name="exerciseName{{i}}"
+                      class="flex-1 min-w-0 px-3 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 font-medium"
+                      autocomplete="off"
+                      placeholder="{{ t.t('routines.exerciseName') }}"
+                    />
+                    <div class="flex items-center gap-1">
+                      <input
+                        type="number"
+                        [(ngModel)]="exercise.setsCount"
+                        (ngModelChange)="updateSets(i, $event)"
+                        name="exerciseSets{{i}}"
+                        min="1"
+                        max="10"
+                        class="w-14 px-2 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-center font-bold"
+                        placeholder="3"
+                      />
+                      <span class="text-xs text-gray-500 font-medium">sets</span>
+                    </div>
+                  </div>
+                  <button type="button" (click)="removeExercise(i)" class="w-full py-2 flex items-center justify-center gap-2 rounded-lg bg-red-50 text-red-600 text-sm font-bold hover:bg-red-100 active:scale-95 transition-all" [attr.aria-label]="t.t('routines.delete')">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                    {{ t.t('routines.delete') }}
+                  </button>
                 </div>
               }
             </div>
           }
-          <button type="button" (click)="addExerciseBlock()" class="mt-3 w-full bg-blue-600 hover:bg-blue-700 text-white rounded-xl px-3 py-3 font-bold shadow-md active:scale-95 transition-all">{{ t.t('routines.addExercise') }}</button>
+          <button type="button" (click)="addExerciseBlock()" class="mt-3 w-full bg-orange-600 hover:bg-orange-700 text-white rounded-xl px-3 py-3 font-bold shadow-md active:scale-95 transition-all">{{ t.t('routines.addExercise') }}</button>
         </div>
         <div class="flex gap-3 mt-4">
           <button type="submit" class="flex-1 bg-green-600 hover:bg-green-700 text-white rounded-xl px-4 py-3 font-bold shadow-md active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed" [disabled]="!newRoutineName.trim() || !exercises.length">{{ editingRoutine ? t.t('routines.save') : t.t('routines.create') }}</button>
