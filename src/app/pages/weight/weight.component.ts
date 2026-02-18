@@ -50,8 +50,8 @@ export class WeightComponent implements OnInit {
     const value = parseFloat(this.weightValue);
     if (isNaN(value) || value < 20 || value > 300) return;
     await BodyWeightRepository.upsert({ date: this.today, weight: parseFloat(value.toFixed(1)) });
+    this.weightValue = '';
     await this.loadEntries();
-    await this.prefillToday();
   }
 
   startEdit(entry: BodyWeightEntry) {

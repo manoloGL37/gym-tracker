@@ -135,4 +135,10 @@ export class StatsComponent implements OnInit {
     const current = this.currentStats();
     return Math.max(...current.dailyDistribution.map(d => d.volume), 1);
   }
+
+  getPeriodLabel(): string {
+    const { start, end } = this.getPeriodRange(this.selectedPeriod(), 0);
+    const fmt = (d: Date) => d.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' });
+    return `${fmt(start)} – ${fmt(end)}`;
+  }
 }
