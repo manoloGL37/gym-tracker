@@ -1,1 +1,28 @@
-/* Minimal styling, layout handled by Tailwind */
+.home-page {
+	background: var(--canvas);
+	min-height: 100dvh;
+}
+
+.home-hero {
+	background: linear-gradient(135deg, var(--brand-950), var(--brand-800));
+}
+
+.hero-orb {
+	position: absolute;
+	right: -4rem;
+	bottom: -5rem;
+	width: 13rem;
+	height: 13rem;
+	border: 1px solid rgb(59 214 178 / .35);
+	border-radius: 999px;
+	box-shadow: 0 0 0 2rem rgb(59 214 178 / .06), 0 0 0 4rem rgb(59 214 178 / .04);
+}
+
+.resume-card {
+	background: linear-gradient(135deg, #118a76, var(--brand-500));
+}
+
+.primary-action {
+	background: var(--brand-950);
+	box-shadow: 0 12px 26px rgb(7 27 34 / .2);
+}

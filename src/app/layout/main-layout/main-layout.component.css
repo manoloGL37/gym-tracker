@@ -1,10 +1,20 @@
-/* Layout and nav bar handled by Tailwind. */
+.app-shell {
+	background: var(--canvas);
+}
+
+.bottom-nav {
+	background: rgb(255 255 255 / .9);
+	border-top: 1px solid rgb(16 57 67 / .09);
+	box-shadow: 0 -10px 35px rgb(16 57 67 / .08);
+	backdrop-filter: blur(18px);
+}
+
 .active-nav-tab {
-	@apply text-orange-600 bg-orange-50;
+	color: var(--brand-500);
 }
 
 .active-nav-tab svg {
-	@apply stroke-orange-600;
+	stroke: var(--brand-500);
 }
 
 a:not(.active-nav-tab) {
@@ -13,4 +23,22 @@ a:not(.active-nav-tab) {
 
 a:not(.active-nav-tab) svg {
 	@apply stroke-gray-400;
+}
+
+a {
+	position: relative;
+}
+
+a::before {
+	content: "";
+	position: absolute;
+	top: 0;
+	width: 1.5rem;
+	height: .2rem;
+	border-radius: 999px;
+	background: transparent;
+}
+
+a.active-nav-tab::before {
+	background: var(--brand-500);
 }

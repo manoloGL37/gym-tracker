@@ -58,7 +58,8 @@ export class AddWorkoutComponent {
       exercises: this.exercises.map((ex, i) => ({
         exerciseId: ex.id,
         name: ex.name,
-        sets: ex.sets.map((set, j) => ({ setIndex: j, reps: set.reps, weight: set.weight }))
+        sets: ex.sets.map((set, j) => ({ setIndex: j, reps: set.reps, weight: set.weight })),
+        observation: ex.observation,
       })),
     });
     this.saving = false;

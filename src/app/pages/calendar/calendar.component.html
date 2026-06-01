@@ -14,11 +14,15 @@
   @if (view==='week') {
     <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-4">
       <div class="flex items-center justify-between mb-2">
-        <button (click)="prevWeek()" class="w-10 h-10 flex items-center justify-center rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold transition-colors">&#8592;</button>
+        <button (click)="prevWeek()" class="w-10 h-10 flex items-center justify-center rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold transition-colors" aria-label="Previous week">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="m15 18-6-6 6-6"/></svg>
+        </button>
         <div class="font-bold text-lg text-gray-900">
           {{ weekDays[0] | date:'MMM d' }} - {{ weekDays[6] | date:'MMM d, yyyy' }}
         </div>
-        <button (click)="nextWeek()" class="w-10 h-10 flex items-center justify-center rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold transition-colors">&#8594;</button>
+        <button (click)="nextWeek()" class="w-10 h-10 flex items-center justify-center rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold transition-colors" aria-label="Next week">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="m9 18 6-6-6-6"/></svg>
+        </button>
       </div>
       <!-- Weekly summary -->
       <div class="text-sm text-gray-500 text-center">

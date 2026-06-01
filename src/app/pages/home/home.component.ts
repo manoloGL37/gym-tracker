@@ -2,8 +2,9 @@ import { Component, OnInit, inject, computed, Signal } from '@angular/core';
 import { LowerCasePipe, DatePipe } from '@angular/common';
 import { TranslationService } from '../../services/translation.service';
 import { Router, RouterLink } from '@angular/router';
-import { WorkoutHistoryRepository } from '../../data/active-training.repository';
+import { ActiveTrainingRepository, WorkoutHistoryRepository } from '../../data/active-training.repository';
 import { WorkoutHistory } from '../../data/workout-history.model';
+import { ActiveTraining } from '../training/training.model';
 
 @Component({
   selector: 'app-home',
@@ -15,6 +16,7 @@ import { WorkoutHistory } from '../../data/workout-history.model';
 export class HomeComponent implements OnInit {
   t = inject(TranslationService);
   lastWorkout: WorkoutHistory | null = null;
+  activeTraining: ActiveTraining | null = null;
   readonly today = new Date();
 
   // Signal for formatted date, recalculated on language change
@@ -33,11 +35,14 @@ export class HomeComponent implements OnInit {
   constructor(private router: Router) {}
 
   async ngOnInit() {
-    this.lastWorkout = (await WorkoutHistoryRepository.getLast()) ?? null;
+    [this.lastWorkout, this.activeTraining] = await Promise.all([
+      WorkoutHistoryRepository.getLast().then(workout => workout ?? null),
+      ActiveTrainingRepository.get().then(training => training ?? null),
+    ]);
   }
 
   startTraining() {
-    this.router.navigate(['/select-routine']);
+    this.router.navigate([this.activeTraining ? '/training' : '/select-routine']);
   }
 
   addWorkout() {

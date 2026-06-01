@@ -77,6 +77,23 @@ export class TrainingComponent implements OnInit {
     return null;
   }
 
+  /**
+   * Returns the most recent non-empty observation for a given exercise.
+   */
+  getLastObservation(exerciseName: string): string | null {
+    for (const workout of this.previousWorkouts) {
+      const observation = workout.exercises
+        .find(exercise => exercise.name === exerciseName)
+        ?.observation
+        ?.trim();
+
+      if (observation) {
+        return observation;
+      }
+    }
+    return null;
+  }
+
   async onSetChange() {
     if (this.training) {
       await ActiveTrainingRepository.save(this.training);

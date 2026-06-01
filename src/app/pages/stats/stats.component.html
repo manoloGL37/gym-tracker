@@ -54,8 +54,8 @@
                         'bg-red-100 text-red-600': getTrend(currentStats().workoutCount, previousStats().workoutCount) === 'down',
                         'bg-gray-100 text-gray-500': getTrend(currentStats().workoutCount, previousStats().workoutCount) === 'equal'
                       }">
-                  <ng-container *ngIf="getTrend(currentStats().workoutCount, previousStats().workoutCount) === 'up'">▲ +{{ currentStats().workoutCount - previousStats().workoutCount }}</ng-container>
-                  <ng-container *ngIf="getTrend(currentStats().workoutCount, previousStats().workoutCount) === 'down'">▼ {{ currentStats().workoutCount - previousStats().workoutCount }}</ng-container>
+                  <ng-container *ngIf="getTrend(currentStats().workoutCount, previousStats().workoutCount) === 'up'"><svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="m18 15-6-6-6 6"/></svg> +{{ currentStats().workoutCount - previousStats().workoutCount }}</ng-container>
+                  <ng-container *ngIf="getTrend(currentStats().workoutCount, previousStats().workoutCount) === 'down'"><svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="m6 9 6 6 6-6"/></svg> {{ currentStats().workoutCount - previousStats().workoutCount }}</ng-container>
                   <ng-container *ngIf="getTrend(currentStats().workoutCount, previousStats().workoutCount) === 'equal'">Sin cambios</ng-container>
                 </span>
               </ng-container>
@@ -91,8 +91,8 @@
                         'bg-red-100 text-red-600': getTrend(currentStats().totalVolume, previousStats().totalVolume) === 'down',
                         'bg-gray-100 text-gray-500': getTrend(currentStats().totalVolume, previousStats().totalVolume) === 'equal'
                       }">
-                  <ng-container *ngIf="getTrend(currentStats().totalVolume, previousStats().totalVolume) === 'up'">▲ +{{ currentStats().totalVolume - previousStats().totalVolume | number:'1.0-0' }} kg</ng-container>
-                  <ng-container *ngIf="getTrend(currentStats().totalVolume, previousStats().totalVolume) === 'down'">▼ {{ currentStats().totalVolume - previousStats().totalVolume | number:'1.0-0' }} kg</ng-container>
+                  <ng-container *ngIf="getTrend(currentStats().totalVolume, previousStats().totalVolume) === 'up'"><svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="m18 15-6-6-6 6"/></svg> +{{ currentStats().totalVolume - previousStats().totalVolume | number:'1.0-0' }} kg</ng-container>
+                  <ng-container *ngIf="getTrend(currentStats().totalVolume, previousStats().totalVolume) === 'down'"><svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="m6 9 6 6 6-6"/></svg> {{ currentStats().totalVolume - previousStats().totalVolume | number:'1.0-0' }} kg</ng-container>
                   <ng-container *ngIf="getTrend(currentStats().totalVolume, previousStats().totalVolume) === 'equal'">Sin cambios</ng-container>
                 </span>
               </ng-container>
@@ -140,7 +140,11 @@
 
       <!-- Empty state -->
       <div *ngIf="currentStats().workoutCount === 0" class="bg-white rounded-2xl border border-gray-100 shadow-sm text-center py-14 px-6 mt-2">
-        <div class="text-5xl mb-3">🏋️</div>
+        <div class="w-16 h-16 mx-auto mb-4 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+          <svg class="w-9 h-9" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 7v10m12-10v10M3 9v6m18-6v6M6 12h12"/>
+          </svg>
+        </div>
         <div class="text-gray-700 font-bold text-base">{{ t.t('stats.noData') }}</div>
         <div class="text-gray-400 text-sm mt-1">{{ t.t('stats.startTraining') }}</div>
       </div>

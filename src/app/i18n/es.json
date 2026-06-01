@@ -1,5 +1,10 @@
 {
   "home.title": "Inicio",
+  "home.kicker": "Tu espacio de entrenamiento",
+  "home.greeting": "Vamos a por ello",
+  "home.activity": "Actividad reciente",
+  "home.activeTraining": "Entreno en curso",
+  "home.resumeTraining": "Continuar entrenamiento",
   "home.startTraining": "Comenzar entrenamiento",
   "home.lastWorkout": "Último entrenamiento",
   "calendar.title": "Historial",
@@ -54,6 +59,7 @@
   "training.reps": "Repeticiones",
   "training.weight": "Peso (kg)",
   "training.lastSet": "Última: {{reps}} repeticiones, {{weight}} kg",
+  "training.lastObservation": "Observación anterior",
   "training.set": "Serie {{number}}",
   "home.today": "Hoy",
   "settings.backup": "Copia de seguridad y restauración",
