@@ -19,6 +19,32 @@
       </div>
     </div>
 
+    <!-- Local data -->
+    <div class="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
+      <label class="block text-sm font-bold uppercase tracking-wide text-gray-700 mb-3">{{ t.t('settings.localData') }}</label>
+      <div class="mb-3 px-3 py-2 rounded-lg bg-gray-50 border border-gray-200">
+        <div class="flex flex-col gap-1 text-xs">
+          <div class="flex items-center gap-2">
+            <svg class="w-4 h-4 flex-shrink-0 text-emerald-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3 5 6v6c0 4.5 3 7.5 7 9 4-1.5 7-4.5 7-9V6l-7-3Z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m9 12 2 2 4-5"/></svg>
+            <span class="font-medium">{{ t.t('settings.localData.protection') }}: {{ formatPersistedStatus() }}</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <svg class="w-4 h-4 flex-shrink-0 text-blue-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7c0 1.7 3.6 3 8 3s8-1.3 8-3-3.6-3-8-3-8 1.3-8 3Z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 1.7 3.6 3 8 3s8-1.3 8-3V7"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg>
+            <span class="font-medium">{{ t.t('settings.localData.storage') }}: {{ formatStorageUsage() }}</span>
+          </div>
+        </div>
+      </div>
+      <p class="text-xs text-gray-500 mb-3">{{ t.t('settings.localData.description') }}</p>
+      <button
+        (click)="requestPersistentStorage()"
+        class="w-full px-4 py-3 rounded-lg font-semibold text-sm bg-emerald-600 text-white shadow hover:bg-emerald-700 transition-all disabled:opacity-50"
+        [disabled]="!storageInfo().supported || storageInfo().persisted === true"
+      >
+        {{ storageInfo().persisted === true ? t.t('settings.localData.alreadyProtected') : t.t('settings.localData.requestProtection') }}
+      </button>
+      <div *ngIf="storageMessage()" class="text-gray-600 text-sm font-medium mt-2">{{ storageMessage() }}</div>
+    </div>
+
     <!-- Backup -->
     <div class="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
       <label class="block text-sm font-bold uppercase tracking-wide text-gray-700 mb-3">{{ t.t('settings.backup') }}</label>
@@ -51,6 +77,13 @@
       <div *ngIf="restoreError()" class="text-red-600 text-sm font-medium mt-2">{{ restoreError() }}</div>
       <div *ngIf="importConfirm()" class="bg-yellow-100 border-2 border-yellow-400 rounded-lg p-4 mt-3">
         <div class="mb-3 font-semibold text-gray-900">{{ t.t('settings.backup.confirmReplace') }}</div>
+        <div *ngIf="importPreview()" class="mb-3 rounded-lg bg-white/70 border border-yellow-300 px-3 py-2 text-xs text-gray-700">
+          <div class="font-bold text-gray-900 mb-1">{{ t.t('settings.backup.importPreview') }}</div>
+          <div>{{ t.t('settings.backup.previewRoutines') }}: {{ importPreview()?.routines }}</div>
+          <div>{{ t.t('settings.backup.previewWorkouts') }}: {{ importPreview()?.workoutHistory }}</div>
+          <div>{{ t.t('settings.backup.previewBodyWeight') }}: {{ importPreview()?.bodyWeight }}</div>
+          <div>{{ t.t('settings.backup.previewExportedAt') }}: {{ formatImportDate() }}</div>
+        </div>
         <div class="flex gap-2">
           <button (click)="confirmImport()" class="flex-1 px-4 py-2 rounded-lg font-semibold text-sm bg-green-600 text-white hover:bg-green-700 transition-all">{{ t.t('settings.backup.yesReplace') }}</button>
           <button (click)="cancelImport()" class="flex-1 px-4 py-2 rounded-lg font-semibold text-sm bg-gray-300 text-gray-800 hover:bg-gray-400 transition-all">{{ t.t('settings.backup.cancel') }}</button>

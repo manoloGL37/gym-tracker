@@ -1,5 +1,6 @@
 import { Component, OnInit, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { RouterLink } from '@angular/router';
 import { WorkoutHistoryRepository } from '../../data/active-training.repository';
 import { WorkoutHistory } from '../../data/workout-history.model';
 import { TranslationService } from '../../services/translation.service';
@@ -15,7 +16,7 @@ interface PeriodStats {
 @Component({
   selector: 'app-stats',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, RouterLink],
   templateUrl: './stats.component.html',
   styleUrls: ['./stats.component.css']
 })

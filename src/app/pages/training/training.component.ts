@@ -77,6 +77,53 @@ export class TrainingComponent implements OnInit {
     return null;
   }
 
+  getSuggestedSetTarget(exerciseName: string, setIndex: number): { reps: number; weight: number } | null {
+    const last = this.getLastSetReference(exerciseName, setIndex);
+    if (!last?.reps || !last?.weight) {
+      return null;
+    }
+
+    if (last.reps < 12) {
+      return { reps: last.reps + 1, weight: last.weight };
+    }
+
+    return { reps: 8, weight: this.roundToNearestIncrement(last.weight + 2.5) };
+  }
+
+  isEstimatedRecord(exerciseName: string, reps: number | null, weight: number | null): boolean {
+    if (!reps || !weight) {
+      return false;
+    }
+
+    const currentEstimate = this.estimateOneRepMax(reps, weight);
+    const previousBest = this.getPreviousBestEstimatedOneRepMax(exerciseName);
+    return previousBest > 0 && currentEstimate > previousBest;
+  }
+
+  private getPreviousBestEstimatedOneRepMax(exerciseName: string): number {
+    let best = 0;
+    for (const workout of this.previousWorkouts) {
+      const exercise = workout.exercises.find(e => e.name === exerciseName);
+      if (!exercise) continue;
+
+      for (const set of exercise.sets) {
+        if (set.reps && set.weight) {
+          best = Math.max(best, this.estimateOneRepMax(set.reps, set.weight));
+        }
+      }
+    }
+
+    return best;
+  }
+
+  private estimateOneRepMax(reps: number, weight: number): number {
+    return weight * (1 + reps / 30);
+  }
+
+  private roundToNearestIncrement(value: number): number {
+    return Math.round(value * 2) / 2;
+  }
+
   /**
    * Returns the most recent non-empty observation for a given exercise.
    */

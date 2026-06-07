@@ -1,6 +1,9 @@
+import { db } from './active-training.repository';
 import { BodyWeightEntry } from './body-weight.model';
 
+const LEGACY_DB_NAME = 'gym-tracker';
 const STORE_NAME = 'bodyWeight';
+const MIGRATION_KEY = 'bodyWeight:dexieMigrated';
 
 /**
  * Helper to get BackupService lazily to avoid circular dependencies
@@ -17,7 +20,6 @@ function getBackupService() {
 }
 
 function triggerBackupAsync() {
-  // Async, non-blocking backup trigger
   setTimeout(() => {
     const service = getBackupService();
     if (service) {
@@ -26,73 +28,89 @@ function triggerBackupAsync() {
   }, 0);
 }
 
-export class BodyWeightRepository {
-  static dbPromise: Promise<IDBDatabase> = openDB();
-
-  private static async getStore(mode: IDBTransactionMode = 'readonly'): Promise<IDBObjectStore> {
-    const db = await this.dbPromise;
-    const tx = db.transaction(STORE_NAME, mode);
-    return tx.objectStore(STORE_NAME);
+async function migrateLegacyBodyWeight(): Promise<void> {
+  if (localStorage.getItem(MIGRATION_KEY) === 'true') {
+    return;
   }
 
-  static async getAll(): Promise<BodyWeightEntry[]> {
-    const store = await this.getStore();
-    return new Promise((resolve, reject) => {
-      const req = store.getAll();
-      req.onsuccess = () => {
-        const result = req.result as BodyWeightEntry[];
-        // Sort descending by date
-        resolve(result.sort((a, b) => b.date.localeCompare(a.date)));
-      };
-      req.onerror = () => reject(req.error);
-    });
-  }
-
-  static async getByDate(date: string): Promise<BodyWeightEntry | null> {
-    const store = await this.getStore();
-    return new Promise((resolve, reject) => {
-      const req = store.get(date);
-      req.onsuccess = () => resolve(req.result ?? null);
-      req.onerror = () => reject(req.error);
-    });
-  }
-
-  static async upsert(entry: BodyWeightEntry): Promise<void> {
-    const store = await this.getStore('readwrite');
-    return new Promise((resolve, reject) => {
-      const req = store.put(entry, entry.date);
-      req.onsuccess = () => {
-        resolve();
-        triggerBackupAsync(); // Trigger backup after weight entry saved
-      };
-      req.onerror = () => reject(req.error);
-    });
-  }
-
-  static async delete(date: string): Promise<void> {
-    const store = await this.getStore('readwrite');
-    return new Promise((resolve, reject) => {
-      const req = store.delete(date);
-      req.onsuccess = () => {
-        resolve();
-        triggerBackupAsync(); // Trigger backup after weight entry deleted
-      };
-      req.onerror = () => reject(req.error);
-    });
+  try {
+    const legacyEntries = await readLegacyBodyWeight();
+    if (legacyEntries.length) {
+      await db.bodyWeight.bulkPut(legacyEntries);
+    }
+  } catch {
+    // Keep the app usable even if the old store cannot be read.
+  } finally {
+    localStorage.setItem(MIGRATION_KEY, 'true');
   }
 }
 
-// --- IndexedDB setup ---
-function openDB(): Promise<IDBDatabase> {
+async function readLegacyBodyWeight(): Promise<BodyWeightEntry[]> {
+  const databases = await indexedDB.databases?.();
+  if (databases && !databases.some(database => database.name === LEGACY_DB_NAME)) {
+    return [];
+  }
+
+  const legacyDb = await openLegacyDB();
+  try {
+    if (!legacyDb.objectStoreNames.contains(STORE_NAME)) {
+      return [];
+    }
+
+    return await new Promise<BodyWeightEntry[]>((resolve, reject) => {
+      const tx = legacyDb.transaction(STORE_NAME, 'readonly');
+      const store = tx.objectStore(STORE_NAME);
+      const req = store.getAll();
+      req.onsuccess = () => resolve((req.result as BodyWeightEntry[]).filter(isValidBodyWeightEntry));
+      req.onerror = () => reject(req.error);
+    });
+  } finally {
+    legacyDb.close();
+  }
+}
+
+function openLegacyDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open('gym-tracker', 2);
-    req.onupgradeneeded = () => {
-      const db = req.result;
-      if (!db.objectStoreNames.contains(STORE_NAME)) {
-        db.createObjectStore(STORE_NAME);
-      }
-    };
+    const req = indexedDB.open(LEGACY_DB_NAME);
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
   });
+}
+
+function isValidBodyWeightEntry(entry: unknown): entry is BodyWeightEntry {
+  if (!entry || typeof entry !== 'object') {
+    return false;
+  }
+
+  const candidate = entry as Partial<BodyWeightEntry>;
+  return typeof candidate.date === 'string' && typeof candidate.weight === 'number';
+}
+
+export class BodyWeightRepository {
+  private static async ensureMigrated(): Promise<void> {
+    await migrateLegacyBodyWeight();
+  }
+
+  static async getAll(): Promise<BodyWeightEntry[]> {
+    await this.ensureMigrated();
+    const entries = await db.bodyWeight.toArray();
+    return entries.sort((a, b) => b.date.localeCompare(a.date));
+  }
+
+  static async getByDate(date: string): Promise<BodyWeightEntry | null> {
+    await this.ensureMigrated();
+    return (await db.bodyWeight.get(date)) ?? null;
+  }
+
+  static async upsert(entry: BodyWeightEntry): Promise<void> {
+    await this.ensureMigrated();
+    await db.bodyWeight.put(entry);
+    triggerBackupAsync();
+  }
+
+  static async delete(date: string): Promise<void> {
+    await this.ensureMigrated();
+    await db.bodyWeight.delete(date);
+    triggerBackupAsync();
+  }
 }

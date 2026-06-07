@@ -2,7 +2,7 @@
 import Dexie, { Table } from 'dexie';
 import { ActiveTraining } from '../pages/training/training.model';
 import { WorkoutHistory } from './workout-history.model';
-import { inject } from '@angular/core';
+import { BodyWeightEntry } from './body-weight.model';
 
 export interface Routine {
   id: string;
@@ -25,14 +25,25 @@ class GymTrackerDB extends Dexie {
   workoutHistory!: Table<WorkoutHistory, string>;
   routines!: Table<Routine, string>;
   selectedRoutine!: Table<SelectedRoutine, string>;
+  bodyWeight!: Table<BodyWeightEntry, string>;
+
   constructor() {
     super('GymTrackerDB');
+    const stores = {
+      activeTraining: 'id',
+      workoutHistory: 'id, finishedAt',
+      routines: 'id',
+      selectedRoutine: 'id',
+      bodyWeight: 'date',
+    };
+
     this.version(4).stores({
       activeTraining: 'id',
       workoutHistory: 'id, finishedAt',
       routines: 'id',
       selectedRoutine: 'id',
     });
+    this.version(5).stores(stores);
   }
 }
 

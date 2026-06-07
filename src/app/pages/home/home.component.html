@@ -44,6 +44,30 @@
       {{ t.t('addWorkout.title') }}
     </button>
 
+    <div class="app-card p-5 mb-4">
+      <div class="app-kicker mb-3">{{ t.t('home.weekSummary') }}</div>
+      <div class="grid grid-cols-3 gap-3">
+        <div>
+          <div class="text-2xl font-black text-gray-900">{{ weekWorkoutCount }}</div>
+          <div class="text-[11px] font-bold text-gray-500 uppercase tracking-wide">{{ t.t('home.weekWorkouts') }}</div>
+        </div>
+        <div>
+          <div class="text-2xl font-black text-gray-900">{{ weekVolume | number:'1.0-0' }}</div>
+          <div class="text-[11px] font-bold text-gray-500 uppercase tracking-wide">{{ t.t('home.weekVolume') }}</div>
+        </div>
+        <div>
+          <div class="text-2xl font-black text-gray-900">
+            @if (latestWeight) {
+              {{ latestWeight.weight | number:'1.1-1' }}
+            } @else {
+              —
+            }
+          </div>
+          <div class="text-[11px] font-bold text-gray-500 uppercase tracking-wide">{{ t.t('home.latestWeight') }}</div>
+        </div>
+      </div>
+    </div>
+
     <!-- Last workout section -->
     <div class="app-card p-5">
       <div class="app-kicker mb-2">{{ t.t('home.activity') }}</div>

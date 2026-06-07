@@ -16,7 +16,7 @@ import { TranslationService } from '../../services/translation.service';
 export class CalendarComponent implements OnInit {
   t = inject(TranslationService);
     async onDeleteWorkout(w: WorkoutHistory) {
-      if (confirm('Delete this workout? This action cannot be undone.')) {
+      if (confirm(this.t.t('calendar.deleteConfirm'))) {
         // Remove from IndexedDB
         await WorkoutHistoryRepository.delete(w.id);
         // Refresh list

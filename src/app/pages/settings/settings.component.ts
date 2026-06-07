@@ -1,8 +1,23 @@
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { TranslationService, Lang } from '../../services/translation.service';
 import { CommonModule } from '@angular/common';
 import { BackupService } from '../../services/backup.service';
 import { Router } from '@angular/router';
+
+interface StorageInfo {
+  usage: number | null;
+  quota: number | null;
+  persisted: boolean | null;
+  supported: boolean;
+}
+
+interface ImportPreview {
+  routines: number;
+  workoutHistory: number;
+  bodyWeight: number;
+  exportedAt: string | null;
+  schemaVersion: number | null;
+}
 
 @Component({
   selector: 'app-settings',
@@ -11,8 +26,7 @@ import { Router } from '@angular/router';
   templateUrl: './settings.component.html',
   styleUrls: ['./settings.component.css']
 })
-
-export class SettingsComponent {
+export class SettingsComponent implements OnInit {
   t = inject(TranslationService);
   lang = computed(() => this.t.lang());
   backupService = inject(BackupService);
@@ -31,7 +45,19 @@ export class SettingsComponent {
 
   importError = signal<string | null>(null);
   importConfirm = signal(false);
+  importPreview = signal<ImportPreview | null>(null);
   importData: string | null = null;
+  storageInfo = signal<StorageInfo>({
+    usage: null,
+    quota: null,
+    persisted: null,
+    supported: typeof navigator !== 'undefined' && !!navigator.storage,
+  });
+  storageMessage = signal<string | null>(null);
+
+  ngOnInit() {
+    this.refreshStorageInfo();
+  }
 
   // Manual restore from server
   restoreError = signal<string | null>(null);
@@ -74,12 +100,78 @@ export class SettingsComponent {
     this.t.setLang(lang);
   }
 
+  async refreshStorageInfo() {
+    if (!navigator.storage) {
+      this.storageInfo.set({
+        usage: null,
+        quota: null,
+        persisted: null,
+        supported: false,
+      });
+      return;
+    }
+
+    const [estimate, persisted] = await Promise.all([
+      navigator.storage.estimate?.() ?? Promise.resolve({ usage: undefined, quota: undefined }),
+      navigator.storage.persisted?.() ?? Promise.resolve(null),
+    ]);
+
+    this.storageInfo.set({
+      usage: estimate.usage ?? null,
+      quota: estimate.quota ?? null,
+      persisted,
+      supported: true,
+    });
+  }
+
+  async requestPersistentStorage() {
+    this.storageMessage.set(null);
+    if (!navigator.storage?.persist) {
+      this.storageMessage.set(this.t.t('settings.localData.persistUnsupported'));
+      await this.refreshStorageInfo();
+      return;
+    }
+
+    const granted = await navigator.storage.persist();
+    await this.refreshStorageInfo();
+    this.storageMessage.set(
+      granted
+        ? this.t.t('settings.localData.persistGranted')
+        : this.t.t('settings.localData.persistDenied'),
+    );
+  }
+
+  formatStorageUsage(): string {
+    const { usage, quota } = this.storageInfo();
+    if (usage === null || quota === null) {
+      return this.t.t('settings.localData.unknown');
+    }
+
+    return `${this.formatBytes(usage)} / ${this.formatBytes(quota)}`;
+  }
+
+  formatPersistedStatus(): string {
+    const persisted = this.storageInfo().persisted;
+    if (persisted === true) return this.t.t('settings.localData.protected');
+    if (persisted === false) return this.t.t('settings.localData.notProtected');
+    return this.t.t('settings.localData.unknown');
+  }
+
+  private formatBytes(bytes: number): string {
+    if (bytes < 1024) return `${bytes} B`;
+    const kb = bytes / 1024;
+    if (kb < 1024) return `${kb.toFixed(1)} KB`;
+    const mb = kb / 1024;
+    if (mb < 1024) return `${mb.toFixed(1)} MB`;
+    return `${(mb / 1024).toFixed(1)} GB`;
+  }
+
   async exportBackup() {
     const blob = await this.backupService.exportData();
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'gym-tracker-backup.json';
+    a.download = `gym-tracker-backup-${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
@@ -92,16 +184,15 @@ export class SettingsComponent {
     reader.onload = () => {
       try {
         const text = reader.result as string;
-        const parsed = JSON.parse(text);
-        if (!Array.isArray(parsed.routines) || !Array.isArray(parsed.workoutHistory)) {
-          throw new Error('Invalid structure');
-        }
+        const preview = this.backupService.previewData(text);
         this.importData = text;
+        this.importPreview.set(preview);
         this.importConfirm.set(true);
         this.importError.set(null);
       } catch (e) {
-        this.importError.set('Invalid or corrupt backup file.');
+        this.importError.set(this.t.t('settings.backup.invalidFile'));
         this.importData = null;
+        this.importPreview.set(null);
         this.importConfirm.set(false);
       }
     };
@@ -114,15 +205,26 @@ export class SettingsComponent {
       await this.backupService.importData(this.importData);
       this.importConfirm.set(false);
       this.importData = null;
+      this.importPreview.set(null);
       window.location.reload();
     } catch (e) {
-      this.importError.set('Import failed.');
+      this.importError.set(this.t.t('settings.backup.importFailed'));
     }
   }
 
   cancelImport() {
     this.importConfirm.set(false);
     this.importData = null;
+    this.importPreview.set(null);
+  }
+
+  formatImportDate(): string {
+    const exportedAt = this.importPreview()?.exportedAt;
+    if (!exportedAt) {
+      return this.t.t('settings.localData.unknown');
+    }
+
+    return new Date(exportedAt).toLocaleString();
   }
 
   /**

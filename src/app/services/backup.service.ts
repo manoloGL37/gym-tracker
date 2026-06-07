@@ -1,9 +1,18 @@
 import { Injectable, signal } from '@angular/core';
 import { db } from '../data/active-training.repository';
-import { BodyWeightRepository } from '../data/body-weight.repository';
 
 const BACKEND_URL = 'https://gym-tracker-backup-api.onrender.com';
 const DEVICE_ID_KEY = 'gym-tracker-device-id';
+const BACKUP_SCHEMA_VERSION = 2;
+
+export interface BackupSnapshot {
+  schemaVersion: number;
+  exportedAt: string;
+  app: 'gym-tracker';
+  routines: any[];
+  workoutHistory: any[];
+  bodyWeight: any[];
+}
 
 
 @Injectable({ providedIn: 'root' })
@@ -104,14 +113,17 @@ export class BackupService {
   /**
    * Create a full snapshot of all app data
    */
-  private async createSnapshot(): Promise<any> {
+  private async createSnapshot(): Promise<BackupSnapshot> {
     const [routines, workoutHistory, bodyWeight] = await Promise.all([
       db.routines.toArray(),
       db.workoutHistory.toArray(),
-      BodyWeightRepository.getAll(),
+      db.bodyWeight.toArray(),
     ]);
 
     return {
+      schemaVersion: BACKUP_SCHEMA_VERSION,
+      exportedAt: new Date().toISOString(),
+      app: 'gym-tracker',
       routines,
       workoutHistory,
       bodyWeight,
@@ -156,20 +168,19 @@ export class BackupService {
       if (!result || typeof result !== 'object' || !result.data) {
         return 'Invalid backup format from server.';
       }
-      const { routines, workoutHistory, bodyWeight } = result.data;
+      const { routines, workoutHistory, bodyWeight } = this.normalizeBackupSnapshot(result.data);
       if (!Array.isArray(routines) || !Array.isArray(workoutHistory)) {
         return 'Server backup is missing required data.';
       }
       // Clear local data
       await db.routines.clear();
       await db.workoutHistory.clear();
+      await db.bodyWeight.clear();
       await db.routines.bulkAdd(routines);
       await db.workoutHistory.bulkAdd(workoutHistory);
       // Restore body weight if present
       if (Array.isArray(bodyWeight)) {
-        for (const entry of bodyWeight) {
-          await BodyWeightRepository.upsert(entry);
-        }
+        await db.bodyWeight.bulkPut(bodyWeight);
       }
       return null; // Success
     } catch (e) {
@@ -189,22 +200,44 @@ export class BackupService {
    * Import data from JSON file (for manual restore)
    */
   async importData(json: string): Promise<void> {
-    const parsed = JSON.parse(json);
-    if (!parsed || !Array.isArray(parsed.routines) || !Array.isArray(parsed.workoutHistory)) {
-      throw new Error('Invalid backup format');
-    }
+    const parsed = this.normalizeBackupSnapshot(JSON.parse(json));
 
     // Replace (not merge) routines and workoutHistory
     await db.routines.clear();
     await db.workoutHistory.clear();
+    await db.bodyWeight.clear();
     await db.routines.bulkAdd(parsed.routines);
     await db.workoutHistory.bulkAdd(parsed.workoutHistory);
 
     // Import body weight if present
     if (Array.isArray(parsed.bodyWeight)) {
-      for (const entry of parsed.bodyWeight) {
-        await BodyWeightRepository.upsert(entry);
-      }
+      await db.bodyWeight.bulkPut(parsed.bodyWeight);
     }
+  }
+
+  previewData(json: string): { routines: number; workoutHistory: number; bodyWeight: number; exportedAt: string | null; schemaVersion: number | null } {
+    const parsed = this.normalizeBackupSnapshot(JSON.parse(json));
+    return {
+      routines: parsed.routines.length,
+      workoutHistory: parsed.workoutHistory.length,
+      bodyWeight: parsed.bodyWeight.length,
+      exportedAt: typeof parsed.exportedAt === 'string' ? parsed.exportedAt : null,
+      schemaVersion: typeof parsed.schemaVersion === 'number' ? parsed.schemaVersion : null,
+    };
+  }
+
+  private normalizeBackupSnapshot(value: any): BackupSnapshot {
+    if (!value || !Array.isArray(value.routines) || !Array.isArray(value.workoutHistory)) {
+      throw new Error('Invalid backup format');
+    }
+
+    return {
+      schemaVersion: typeof value.schemaVersion === 'number' ? value.schemaVersion : 1,
+      exportedAt: typeof value.exportedAt === 'string' ? value.exportedAt : '',
+      app: 'gym-tracker',
+      routines: value.routines,
+      workoutHistory: value.workoutHistory,
+      bodyWeight: Array.isArray(value.bodyWeight) ? value.bodyWeight : [],
+    };
   }
 }
