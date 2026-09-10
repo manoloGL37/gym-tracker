@@ -1,9 +1,14 @@
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { TranslationService, Lang } from '../../services/translation.service';
 import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 import { BackupService } from '../../services/backup.service';
 import { Router, RouterLink } from '@angular/router';
 import { AuthSessionService } from '../../auth/auth-session.service';
+import { LocalToCloudMigrationService } from '../../migration/local-to-cloud-migration.service';
+import { MigrationLedger, MigrationPreview } from '../../migration/local-to-cloud-migration.models';
+import { ExerciseResponse } from '../../exercises/exercise-api.models';
+import { getExerciseName } from '../../exercises/exercise-domain';
 
 interface StorageInfo {
   usage: number | null;
@@ -23,7 +28,7 @@ interface ImportPreview {
 @Component({
   selector: 'app-settings',
   standalone: true,
-  imports: [CommonModule, RouterLink],
+  imports: [CommonModule, RouterLink, FormsModule],
   templateUrl: './settings.component.html',
   styleUrls: ['./settings.component.css']
 })
@@ -33,6 +38,7 @@ export class SettingsComponent implements OnInit {
   backupService = inject(BackupService);
   router = inject(Router);
   auth = inject(AuthSessionService);
+  migration = inject(LocalToCloudMigrationService);
 
   // Read backup status directly from localStorage
   lastBackupTime = computed(() => {
@@ -56,10 +62,76 @@ export class SettingsComponent implements OnInit {
     supported: typeof navigator !== 'undefined' && !!navigator.storage,
   });
   storageMessage = signal<string | null>(null);
+  migrationPreview = signal<MigrationPreview | null>(null);
+  migrationLedger = signal<MigrationLedger | null>(null);
+  migrationBusy = signal(false);
+  migrationError = signal<string | null>(null);
+  unresolvedExercises = signal<{ key: string; name: string }[]>([]);
+  resolving = signal<{ key: string; name: string } | null>(null);
+  migrationSearch = '';
+  migrationCatalog = signal<ExerciseResponse[]>([]);
+  targetReps = 10;
+  restSeconds = 90;
 
   ngOnInit() {
     this.refreshStorageInfo();
+    void this.loadMigration();
   }
+
+  async loadMigration(): Promise<void> {
+    const accountId = this.auth.currentUser()?.id;
+    if (!accountId) { this.migrationPreview.set(null); this.migrationLedger.set(null); return; }
+    const [preview, ledger, unresolved] = await Promise.all([
+      this.migration.getPreview(accountId), this.migration.getLedger(accountId), this.migration.unresolvedReferences(accountId),
+    ]);
+    this.migrationPreview.set(preview); this.migrationLedger.set(ledger); this.unresolvedExercises.set(unresolved);
+    this.targetReps = ledger.defaults.targetReps; this.restSeconds = ledger.defaults.restSeconds;
+  }
+
+  async startMigration(): Promise<void> {
+    const accountId = this.auth.currentUser()?.id;
+    if (!accountId || this.migrationBusy()) return;
+    this.migrationBusy.set(true); this.migrationError.set(null);
+    try {
+      await this.migration.setDefaults(accountId, Number(this.targetReps), Number(this.restSeconds));
+      await this.migration.start(accountId);
+      await this.loadMigration();
+    } catch (error) { this.migrationError.set(error instanceof Error ? error.message : 'No se pudo iniciar la migración.'); }
+    finally { this.migrationBusy.set(false); }
+  }
+
+  async postponeMigration(): Promise<void> {
+    const accountId = this.auth.currentUser()?.id;
+    if (!accountId) return;
+    await this.migration.postpone(accountId); await this.loadMigration();
+  }
+
+  async openExerciseResolution(reference: { key: string; name: string }): Promise<void> {
+    this.resolving.set(reference); this.migrationSearch = reference.name; await this.searchMigrationCatalog();
+  }
+
+  async searchMigrationCatalog(): Promise<void> {
+    this.migrationBusy.set(true); this.migrationError.set(null);
+    try { this.migrationCatalog.set(await this.migration.searchExercises(this.migrationSearch)); }
+    catch { this.migrationError.set('No se pudo cargar el catálogo. Puedes reintentar o crear un ejercicio personalizado.'); }
+    finally { this.migrationBusy.set(false); }
+  }
+
+  async selectMigrationCatalogExercise(exercise: ExerciseResponse): Promise<void> {
+    const accountId = this.auth.currentUser()?.id; const reference = this.resolving();
+    if (!accountId || !reference) return;
+    await this.migration.chooseCatalogExercise(accountId, reference.key, exercise);
+    this.resolving.set(null); await this.loadMigration();
+  }
+
+  async createMigrationCustomExercise(): Promise<void> {
+    const accountId = this.auth.currentUser()?.id; const reference = this.resolving();
+    if (!accountId || !reference) return;
+    await this.migration.chooseCustomExercise(accountId, reference.key);
+    this.resolving.set(null); await this.startMigration();
+  }
+
+  migrationExerciseName(exercise: ExerciseResponse): string { return getExerciseName(exercise, this.t.lang()); }
 
   // Manual restore from server
   restoreError = signal<string | null>(null);

@@ -1,4 +1,4 @@
-<div class="flex flex-col bg-gray-50 pb-4" style="min-height: 100dvh;">
+<div class="workout-detail-page flex flex-col bg-gray-50 pb-4" style="min-height: 100dvh;">
   @if (cloudWorkout) {
     <div class="bg-gradient-to-br from-orange-500 to-orange-700 text-white px-4 pt-4 pb-6 shadow-lg"><h1 class="text-2xl font-bold mb-1">{{ cloudRoutineName }}</h1><div class="text-orange-100 text-sm">{{ (cloudWorkout.completedAt || cloudWorkout.startedAt) | date:'medium' }}</div></div>
     <div class="flex-1 px-4 pt-4 pb-4"><div class="mb-3 rounded-xl bg-sky-50 p-3 text-sm text-sky-800">Cloud: las series guardadas son de solo lectura porque la API actual no permite editarlas ni borrarlas.</div>

@@ -1,1 +1,10 @@
-/* Minimal styling, layout handled by Tailwind */
+.routine-page .app-page-header .app-kicker { color: var(--plate); }
+.routine-toolbar { display:flex; align-items:center; justify-content:space-between; margin-bottom:1rem; padding-bottom:.8rem; border-bottom:1px solid var(--line); color:var(--muted); font-size:.75rem; font-weight:700; }.routine-toolbar button { min-height:2.7rem; border:0; border-radius:.65rem; padding:0 .9rem; background:var(--plate); color:var(--rubber); font-size:.78rem; font-weight:800; }.routine-card { gap: 1rem; margin-bottom:0!important; border-width:0 0 1px!important; border-radius:0!important; box-shadow:none!important; }
+.routine-card > div:first-child { min-width: 0; }
+.routine-card .text-lg { letter-spacing: -.025em; }
+.routine-card .flex.gap-2 { flex-shrink: 0; }
+.routine-card button { min-height: 2.5rem; }
+.routine-page form > .rounded-xl { border-color: var(--line) !important; border-width:0 0 1px!important; border-radius:0!important; background:transparent!important; }
+.routine-page label { color: var(--steel); }
+@media (min-width: 48rem) { .routine-page .app-content { display: grid; grid-template-columns: minmax(0, 1fr) minmax(22rem, .8fr); column-gap: 3rem; align-content: start; } .routine-page .app-content > .routine-toolbar { grid-column:1; } .routine-page .app-content > .mt-6 { grid-column: 2; grid-row: 1 / span 5; margin-top: 0; position:sticky; top:1rem; max-height:calc(100dvh - 8rem); overflow-y:auto; border-radius:1rem!important; } }
+@media (max-width: 25rem) { .routine-card { align-items: flex-start; flex-direction: column; } .routine-card .flex.gap-2 { width: 100%; } .routine-card .flex.gap-2 button { flex: 1; } }

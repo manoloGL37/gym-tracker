@@ -12,6 +12,7 @@ import { RoutineApiService } from '../../routines/routine-api.service';
 import { RoutineResponse } from '../../routines/routine-api.models';
 import { CloudRoutineDraft, cloudDraftFromResponse, cloudExerciseDraft, newCloudRoutineDraft, RoutineListItem, toCreateRoutineRequest } from '../../routines/routine-domain';
 import { TranslationService } from '../../services/translation.service';
+import { LocalToCloudMigrationService } from '../../migration/local-to-cloud-migration.service';
 
 @Component({ selector: 'app-routines', standalone: true, imports: [CommonModule, FormsModule], templateUrl: './routines.component.html', styleUrls: ['./routines.component.css'] })
 export class RoutinesComponent {
@@ -19,6 +20,7 @@ export class RoutinesComponent {
   readonly auth = inject(AuthSessionService);
   private readonly routineApi = inject(RoutineApiService);
   private readonly exerciseApi = inject(ExerciseApiService);
+  private readonly migration = inject(LocalToCloudMigrationService);
 
   routines: RoutineListItem[] = [];
   loading = true;
@@ -55,7 +57,11 @@ export class RoutinesComponent {
 
   async loadRoutines(page = this.cloudPageNumber): Promise<void> {
     this.loading = true;
-    const localItems: RoutineListItem[] = (await RoutinesRepository.getAll()).map(routine => ({ source: 'local', routine }));
+    const rawLocal = await RoutinesRepository.getAll();
+    const accountId = this.auth.currentUser?.()?.id;
+    // In an authenticated view, a confirmed cloud equivalent replaces (but never deletes) its legacy card.
+    const visibleLocal = accountId ? await this.excludeMigratedRoutines(accountId, rawLocal) : rawLocal;
+    const localItems: RoutineListItem[] = visibleLocal.map(routine => ({ source: 'local', routine }));
     if (!this.auth.isAuthenticated()) {
       this.routines = localItems;
       this.loading = false;
@@ -112,6 +118,8 @@ export class RoutinesComponent {
 
   addLocalExerciseBlock(): void { this.localExercises.push({ id: crypto.randomUUID(), name: '', setsCount: 3 }); }
   removeLocalExercise(index: number): void { this.localExercises.splice(index, 1); }
+  moveLocalExercise(index: number, direction: -1 | 1): void { this.moveExercise(this.localExercises, index, direction); }
+  moveCloudExercise(index: number, direction: -1 | 1): void { this.moveExercise(this.cloudDraft.exercises, index, direction); }
 
   async saveRoutine(): Promise<void> {
     if (this.isCloudEditor) await this.saveCloudRoutine();
@@ -194,6 +202,12 @@ export class RoutinesComponent {
   async nextSelectorPage(): Promise<void> { const page = this.selectorPage(); if (page && this.selectorPageNumber + 1 < page.totalPages) await this.loadSelectorPage(this.selectorPageNumber + 1); }
   exerciseName(exercise: ExerciseResponse): string { return getExerciseName(exercise, this.t.lang()); }
 
+  private moveExercise<T>(items: T[], index: number, direction: -1 | 1): void {
+    const destination = index + direction;
+    if (destination < 0 || destination >= items.length) return;
+    [items[index], items[destination]] = [items[destination], items[index]];
+  }
+
   private async loadCloudExerciseNames(routine: RoutineResponse): Promise<Map<string, string>> {
     const names = new Map<string, string>();
     await Promise.all(routine.exercises.map(async exercise => {
@@ -205,6 +219,11 @@ export class RoutinesComponent {
       }
     }));
     return names;
+  }
+
+  private async excludeMigratedRoutines(accountId: string, routines: Routine[]): Promise<Routine[]> {
+    const migrated = await Promise.all(routines.map(routine => this.migration.isRoutineMigrated(accountId, routine.id)));
+    return routines.filter((_, index) => !migrated[index]);
   }
 }
 

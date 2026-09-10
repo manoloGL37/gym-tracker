@@ -1,27 +1,19 @@
-<div class="flex flex-col bg-gray-50 pb-4" style="min-height: 100dvh;">
-  <!-- Header -->
-  <div class="bg-gradient-to-br from-orange-500 to-orange-700 text-white px-4 pt-4 pb-6 shadow-lg">
-    <h1 class="text-2xl font-bold mb-1">{{ t.t('selectRoutine.title') }}</h1>
-    <div class="text-orange-100 text-sm">{{ t.t('selectRoutine.subtitle') }}</div>
-  </div>
-
-  <div class="flex-1 px-4 pt-4">
-    @if (error) { <p class="mb-3 rounded-xl bg-red-50 p-3 text-sm text-red-700">{{ error }}</p> }
+<div class="train-picker">
+  <header class="train-picker__header"><span class="app-kicker">Entrenar</span><h1>Elige tu sesión</h1><p>Selecciona una rutina y empieza a registrar series.</p></header>
+  <main class="train-picker__content">
+    @if (error) { <p class="train-picker__alert" role="alert">{{ error }}</p> }
+    @if (loading) { <p class="train-picker__loading">Cargando tus rutinas…</p> }
     @if (!loading && routines.length) {
-      @for (item of routines; track routineKey(item)) {
-        <button
-          (click)="selectRoutine(item)"
-          class="w-full text-left bg-white rounded-2xl shadow-md border border-gray-100 mb-3 px-4 py-5 active:scale-95 focus:outline-none focus:ring-4 focus:ring-orange-300 transition-transform"
-        >
-          <div class="flex flex-col">
-            <span class="text-lg font-bold text-gray-900 mb-1">{{ item.routine.name }} <span class="rounded-full px-2 py-0.5 text-xs" [class.bg-gray-100]="item.source === 'local'" [class.bg-sky-100]="item.source === 'cloud'">{{ item.source === 'local' ? 'Local' : 'Cloud' }}</span></span>
-            <span class="text-gray-500 text-sm font-medium">{{ item.source === 'local' ? item.routine.exercises.length : 'Rutina respaldada' }} {{ item.source === 'local' ? t.t('routines.exercises') : '' }}</span>
-          </div>
-        </button>
-      }
-      @if (auth.isAuthenticated() && cloudTotalPages > 1) { <div class="flex justify-between gap-3"><button (click)="previousCloudPage()" [disabled]="cloudPageNumber === 0" class="rounded-lg border px-3 py-2 text-sm font-bold disabled:opacity-40">Anterior</button><span class="py-2 text-sm text-gray-500">Página {{ cloudPageNumber + 1 }} de {{ cloudTotalPages }}</span><button (click)="nextCloudPage()" [disabled]="cloudPageNumber + 1 >= cloudTotalPages" class="rounded-lg border px-3 py-2 text-sm font-bold disabled:opacity-40">Siguiente</button></div> }
-    } @else {
-      <div class="text-center text-gray-400 mt-10 font-medium">{{ t.t('selectRoutine.noRoutines') }}</div>
-    }
-  </div>
+      <div class="train-picker__list">
+        @for (item of routines; track routineKey(item); let i = $index) {
+          <button (click)="selectRoutine(item)" class="routine-launch">
+            <span class="routine-launch__index">{{ i + 1 }}</span>
+            <span class="routine-launch__body"><strong>{{ item.routine.name }}</strong><small>@if (item.source === 'local') { {{ item.routine.exercises.length }} {{ t.t('routines.exercises') }} } @else { Rutina guardada en tu cuenta }</small></span>
+            <span class="source-badge" [class.source-badge--cloud]="item.source === 'cloud'">{{ item.source === 'cloud' ? 'Cuenta' : 'Dispositivo' }}</span><span class="routine-launch__arrow" aria-hidden="true">→</span>
+          </button>
+        }
+      </div>
+      @if (auth.isAuthenticated() && cloudTotalPages > 1) { <nav class="picker-pagination" aria-label="Páginas de rutinas"><button (click)="previousCloudPage()" [disabled]="cloudPageNumber === 0">Anterior</button><span>{{ cloudPageNumber + 1 }} / {{ cloudTotalPages }}</span><button (click)="nextCloudPage()" [disabled]="cloudPageNumber + 1 >= cloudTotalPages">Siguiente</button></nav> }
+    } @else if (!loading) { <section class="train-picker__empty"><h2>Aún no hay una rutina</h2><p>Crea una rutina en la pestaña Rutinas para empezar tu primera sesión.</p><a routerLink="/routines">Crear rutina</a></section> }
+  </main>
 </div>

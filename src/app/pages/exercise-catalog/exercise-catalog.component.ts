@@ -30,6 +30,7 @@ type CatalogView = 'guest' | 'catalog' | 'detail' | 'form';
   standalone: true,
   imports: [CommonModule, FormsModule, RouterLink],
   templateUrl: './exercise-catalog.component.html',
+  styleUrl: './exercise-catalog.component.css',
 })
 export class ExerciseCatalogComponent {
   readonly auth = inject(AuthSessionService);

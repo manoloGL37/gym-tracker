@@ -7,7 +7,6 @@ import { CalendarComponent } from './pages/calendar/calendar.component';
 // import { BodyWeightComponent } from './pages/body-weight/body-weight.component';
 import { WeightComponent } from './pages/weight/weight.component';
 import { TrainingComponent } from './pages/training/training.component';
-import { StatsComponent } from './pages/stats/stats.component';
 
 import { AddWorkoutComponent } from './pages/add-workout/add-workout.component';
 
@@ -28,7 +27,7 @@ export const routes: Routes = [
       { path: 'calendar/:id', loadComponent: () => import('./pages/calendar/workout-detail/workout-detail.component').then(m => m.WorkoutDetailComponent), title: 'Workout Detail' },
       { path: 'add-workout', component: AddWorkoutComponent, title: 'Add Workout' },
       { path: 'weight', component: WeightComponent, title: 'Weight' },
-      { path: 'stats', component: StatsComponent, title: 'Stats' },
+      { path: 'stats', loadComponent: () => import('./pages/stats/stats.component').then(m => m.StatsComponent), title: 'Stats' },
       { path: 'exercises', loadComponent: () => import('./pages/exercise-history/exercise-history.component').then(m => m.ExerciseHistoryComponent), title: 'Exercise History' },
       { path: 'exercise-catalog', loadComponent: () => import('./pages/exercise-catalog/exercise-catalog.component').then(m => m.ExerciseCatalogComponent), title: 'Exercise Catalog' },
       { path: 'training', component: TrainingComponent, title: 'Training' },

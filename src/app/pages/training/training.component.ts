@@ -1,6 +1,7 @@
-import { Component, inject, OnInit } from '@angular/core';
+import { ChangeDetectionStrategy, ChangeDetectorRef, Component, inject, NgZone, OnDestroy, OnInit } from '@angular/core';
 import { Router } from '@angular/router';
 import { FormsModule } from '@angular/forms';
+import { DecimalPipe } from '@angular/common';
 import { firstValueFrom } from 'rxjs';
 import { HttpErrorResponse } from '@angular/common/http';
 import { ActiveTraining } from './training.model';
@@ -12,16 +13,22 @@ import { ExerciseApiService } from '../../exercises/exercise-api.service';
 import { getExerciseName } from '../../exercises/exercise-domain';
 import { WorkoutApiService } from '../../workouts/workout-api.service';
 import { CloudActiveExercise, CloudActiveTraining, cloudActiveFromWorkout, newCloudSetDraft, toBackendLocalDateTime } from '../../workouts/workout-domain';
+import { WorkoutResponse } from '../../workouts/workout-api.models';
 
-@Component({ selector: 'app-training', standalone: true, imports: [FormsModule], templateUrl: './training.component.html', styleUrls: ['./training.component.css'] })
-export class TrainingComponent implements OnInit {
+@Component({ selector: 'app-training', standalone: true, imports: [FormsModule, DecimalPipe], templateUrl: './training.component.html', styleUrls: ['./training.component.css'], changeDetection: ChangeDetectionStrategy.OnPush })
+export class TrainingComponent implements OnInit, OnDestroy {
   training: ActiveTraining | null = null;
   cloudTraining: CloudActiveTraining | null = null;
   loading = true;
   previousWorkouts: WorkoutHistory[] = [];
+  previousCloudWorkouts: WorkoutResponse[] = [];
   showConfirmFinish = false;
   cloudError: string | null = null;
   cloudSaving = false;
+  now = Date.now();
+  private clock: ReturnType<typeof setInterval> | null = null;
+  private readonly zone = inject(NgZone);
+  private readonly cdr = inject(ChangeDetectorRef);
   t = inject(TranslationService);
   private readonly auth = inject(AuthSessionService);
   private readonly workoutApi = inject(WorkoutApiService);
@@ -30,15 +37,18 @@ export class TrainingComponent implements OnInit {
   constructor(private router: Router) {}
 
   async ngOnInit() {
+    this.startClock();
     this.previousWorkouts = await WorkoutHistoryRepository.getAll();
     const local = await ActiveTrainingRepository.get();
-    if (local) { this.training = local; this.loading = false; return; }
+    if (local) { this.training = local; this.loading = false; this.cdr.markForCheck(); return; }
 
     const cloud = await CloudActiveTrainingRepository.get();
     if (cloud) {
       this.cloudTraining = cloud;
       this.loading = false;
       void this.refreshCloudTraining(cloud);
+      void this.loadCloudBenchmarks(cloud.workoutId);
+      this.cdr.markForCheck();
       return;
     }
 
@@ -47,6 +57,7 @@ export class TrainingComponent implements OnInit {
     if (selected.source === 'cloud') {
       await this.startCloudTraining(selected.routineId, selected.routineName, selected.workoutClientId);
       this.loading = false;
+      this.cdr.markForCheck();
       return;
     }
     const routine = await RoutinesRepository.get(selected.routineId);
@@ -57,6 +68,40 @@ export class TrainingComponent implements OnInit {
       await ActiveTrainingRepository.save(this.training);
     }
     this.loading = false;
+    this.cdr.markForCheck();
+  }
+
+  ngOnDestroy(): void { if (this.clock) clearInterval(this.clock); }
+
+  private startClock(): void {
+    this.zone.runOutsideAngular(() => {
+      this.clock = setInterval(() => {
+        this.now = Date.now();
+        this.cdr.markForCheck();
+      }, 1_000);
+    });
+  }
+
+  completedSetCount(): number {
+    if (this.training) return this.training.exercises.flatMap(exercise => exercise.sets).filter(set => set.reps !== null && set.weight !== null).length;
+    return this.cloudTraining?.exercises.flatMap(exercise => exercise.sets).filter(set => set.persisted).length ?? 0;
+  }
+
+  totalSetCount(): number {
+    return this.training?.exercises.flatMap(exercise => exercise.sets).length ?? this.cloudTraining?.exercises.flatMap(exercise => exercise.sets).length ?? 0;
+  }
+
+  exerciseHasPendingSets(exercise: ActiveTraining['exercises'][number]): boolean {
+    return exercise.sets.some(set => set.reps === null || set.weight === null);
+  }
+
+  exerciseNumber(index: number): string { return (index + 1).toString().padStart(2, '0'); }
+
+  elapsed(): string {
+    const startedAt = this.training?.startedAt ?? this.cloudTraining?.startedAt;
+    if (!startedAt) return '00:00';
+    const seconds = Math.max(0, Math.floor((this.now - new Date(startedAt).getTime()) / 1000));
+    return `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
   }
 
   private async startCloudTraining(routineId: string, routineName: string, clientId: string): Promise<void> {
@@ -67,6 +112,7 @@ export class TrainingComponent implements OnInit {
       this.cloudTraining = cloudActiveFromWorkout(workout, routineName, names);
       await CloudActiveTrainingRepository.save(this.cloudTraining);
       await SelectedRoutineRepository.clear();
+      await this.loadCloudBenchmarks(workout.id);
     } catch (error) {
       // The selected routine/clientId remains in Dexie, so a retry cannot duplicate an ambiguous POST.
       this.cloudError = cloudErrorMessage(error);
@@ -93,7 +139,26 @@ export class TrainingComponent implements OnInit {
       }
       this.cloudTraining = fresh;
       await CloudActiveTrainingRepository.save(fresh);
+      await this.loadCloudBenchmarks(fresh.workoutId);
     } catch (error) { this.cloudError = cloudErrorMessage(error); }
+  }
+
+  /** The API has no per-exercise history endpoint, so paginate workouts and match by stable exercise UUID. */
+  private async loadCloudBenchmarks(activeWorkoutId: string): Promise<void> {
+    if (!this.auth.isAuthenticated()) return;
+    try {
+      const first = await firstValueFrom(this.workoutApi.list({ page: 0, size: 100 }));
+      const pages = await Promise.all(Array.from({ length: Math.max(0, first.totalPages - 1) }, (_, index) =>
+        firstValueFrom(this.workoutApi.list({ page: index + 1, size: 100 }))));
+      this.previousCloudWorkouts = [first, ...pages]
+        .flatMap(page => page.content)
+        .filter(workout => workout.id !== activeWorkoutId && workout.completedAt !== null)
+        .sort((a, b) => new Date(b.completedAt ?? b.startedAt).getTime() - new Date(a.completedAt ?? a.startedAt).getTime());
+      this.cdr.markForCheck();
+    } catch {
+      // Benchmarks are an enhancement: a history failure must not block a usable active workout.
+      this.previousCloudWorkouts = [];
+    }
   }
 
   private async loadExerciseNames(ids: string[]): Promise<Map<string, string>> {
@@ -109,6 +174,13 @@ export class TrainingComponent implements OnInit {
       const ex = workout.exercises.find(e => e.name === exerciseName);
       const set = ex?.sets.find(s => s.setIndex === setIndex);
       if (set && (set.reps !== null || set.weight !== null)) return { reps: set.reps, weight: set.weight };
+    }
+    return null;
+  }
+  getCloudLastSetReference(exerciseId: string, setNumber: number): { reps: number, weight: number } | null {
+    for (const workout of this.previousCloudWorkouts) {
+      const set = workout.exercises.find(exercise => exercise.exerciseId === exerciseId)?.sets.find(value => value.setNumber === setNumber);
+      if (set) return { reps: set.reps, weight: set.weight };
     }
     return null;
   }

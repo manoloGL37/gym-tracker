@@ -8,6 +8,7 @@ import { TranslationService } from '../../services/translation.service';
 import { AuthSessionService } from '../../auth/auth-session.service';
 import { WorkoutApiService } from '../../workouts/workout-api.service';
 import { RoutineApiService } from '../../routines/routine-api.service';
+import { LocalToCloudMigrationService } from '../../migration/local-to-cloud-migration.service';
 
 interface CalendarWorkoutItem {
   source: 'local' | 'cloud'; id: string; routineName: string; startedAt: string; finishedAt: string | null; exerciseCount: number; local?: WorkoutHistory;
@@ -19,7 +20,9 @@ export class CalendarComponent implements OnInit {
   readonly auth = inject(AuthSessionService);
   private readonly workoutApi = inject(WorkoutApiService);
   private readonly routineApi = inject(RoutineApiService);
-  view: 'week' | 'list' = 'week';
+  private readonly migration = inject(LocalToCloudMigrationService);
+  // Chronological sessions answer the primary question first; the week view remains one tap away.
+  view: 'week' | 'list' = 'list';
   workouts: CalendarWorkoutItem[] = [];
   cloudPageNumber = 0;
   cloudTotalPages = 0;
@@ -32,7 +35,10 @@ export class CalendarComponent implements OnInit {
   ngOnInit() { void this.loadWorkouts(); this.setWeekDays(); }
 
   async loadWorkouts(page = this.cloudPageNumber) {
-    const local = await WorkoutHistoryRepository.getAll();
+    const rawLocal = await WorkoutHistoryRepository.getAll();
+    const accountId = this.auth.currentUser?.()?.id;
+    const migrated = accountId ? await Promise.all(rawLocal.map(workout => this.migration.isWorkoutMigrated(accountId, workout.id))) : rawLocal.map(() => false);
+    const local = rawLocal.filter((_, index) => !migrated[index]);
     const localItems = local.map(workout => ({ source: 'local' as const, id: workout.id, routineName: workout.routineName, startedAt: workout.startedAt, finishedAt: workout.finishedAt, exerciseCount: workout.exercises.length, local: workout }));
     if (!this.auth.isAuthenticated()) { this.workouts = localItems; return; }
     try {

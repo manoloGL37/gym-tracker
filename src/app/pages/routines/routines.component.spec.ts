@@ -79,4 +79,15 @@ describe('RoutinesComponent local/cloud boundary', () => {
     await component.openSelector();
     expect(exerciseApi.list).toHaveBeenCalledWith({ page: 0, size: 10, search: undefined });
   });
+
+  it('reorders editor exercises without changing their identities', async () => {
+    await create(false);
+    component.localExercises = [
+      { id: 'first', name: 'Sentadilla', setsCount: 3 },
+      { id: 'second', name: 'Press', setsCount: 3 },
+    ];
+    component.moveLocalExercise(0, 1);
+    component.moveLocalExercise(0, -1);
+    expect(component.localExercises.map(exercise => exercise.id)).toEqual(['second', 'first']);
+  });
 });

@@ -4,6 +4,7 @@ import { ActiveTraining } from '../pages/training/training.model';
 import { WorkoutHistory } from './workout-history.model';
 import { BodyWeightEntry } from './body-weight.model';
 import { CloudActiveTraining } from '../workouts/workout-domain';
+import { MigrationLedger } from '../migration/local-to-cloud-migration.models';
 
 export interface Routine {
   id: string;
@@ -41,6 +42,7 @@ class GymTrackerDB extends Dexie {
   routines!: Table<Routine, string>;
   selectedRoutine!: Table<SelectedRoutine, string>;
   bodyWeight!: Table<BodyWeightEntry, string>;
+  migrationLedgers!: Table<MigrationLedger, string>;
 
   constructor() {
     super('GymTrackerDB');
@@ -60,6 +62,9 @@ class GymTrackerDB extends Dexie {
     });
     this.version(5).stores(stores);
     this.version(6).stores({ ...stores, cloudActiveTraining: 'id' });
+    // Account-scoped migration metadata is deliberately separate from the legacy data.
+    // No migration path clears routines, history, active training or body-weight stores.
+    this.version(7).stores({ ...stores, cloudActiveTraining: 'id', migrationLedgers: 'accountId' });
   }
 }
 

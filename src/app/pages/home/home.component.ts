@@ -1,18 +1,20 @@
 import { Component, OnInit, inject, computed, Signal } from '@angular/core';
-import { LowerCasePipe, DatePipe, DecimalPipe } from '@angular/common';
+import { DatePipe, DecimalPipe } from '@angular/common';
 import { TranslationService } from '../../services/translation.service';
 import { Router, RouterLink } from '@angular/router';
-import { ActiveTrainingRepository, CloudActiveTrainingRepository, WorkoutHistoryRepository } from '../../data/active-training.repository';
+import { ActiveTrainingRepository, CloudActiveTrainingRepository, RoutinesRepository, Routine, WorkoutHistoryRepository } from '../../data/active-training.repository';
 import { WorkoutHistory } from '../../data/workout-history.model';
 import { ActiveTraining } from '../training/training.model';
 import { BodyWeightRepository } from '../../data/body-weight.repository';
 import { BodyWeightEntry } from '../../data/body-weight.model';
 import { CloudActiveTraining } from '../../workouts/workout-domain';
+import { AuthSessionService } from '../../auth/auth-session.service';
+import { LocalToCloudMigrationService } from '../../migration/local-to-cloud-migration.service';
 
 @Component({
   selector: 'app-home',
   standalone: true,
-  imports: [LowerCasePipe, DatePipe, DecimalPipe, RouterLink],
+  imports: [DatePipe, DecimalPipe, RouterLink],
   templateUrl: './home.component.html',
   styleUrls: ['./home.component.css']
 })
@@ -23,7 +25,10 @@ export class HomeComponent implements OnInit {
   weekWorkoutCount = 0;
   weekVolume = 0;
   latestWeight: BodyWeightEntry | null = null;
+  routineShortcuts: Routine[] = [];
   readonly today = new Date();
+  private readonly auth = inject(AuthSessionService);
+  private readonly migration = inject(LocalToCloudMigrationService);
 
   // Signal for formatted date, recalculated on language change
   formattedDate = computed(() => {
@@ -41,18 +46,23 @@ export class HomeComponent implements OnInit {
   constructor(private router: Router) {}
 
   async ngOnInit() {
-    const [workouts, activeTraining, cloudActiveTraining, weightEntries] = await Promise.all([
+    const [workouts, activeTraining, cloudActiveTraining, weightEntries, routines] = await Promise.all([
       WorkoutHistoryRepository.getAll(),
       ActiveTrainingRepository.get().then(training => training ?? null),
       CloudActiveTrainingRepository.get().then(training => training ?? null),
       BodyWeightRepository.getAll(),
+      RoutinesRepository.getAll(),
     ]);
 
-    this.lastWorkout = workouts[0] ?? null;
+    const accountId = this.auth.currentUser?.()?.id;
+    const migrated = accountId ? await Promise.all(workouts.map(workout => this.migration.isWorkoutMigrated(accountId, workout.id))) : workouts.map(() => false);
+    const visibleWorkouts = workouts.filter((_, index) => !migrated[index]);
+    this.lastWorkout = visibleWorkouts[0] ?? null;
     this.activeTraining = activeTraining ?? cloudActiveTraining;
     this.latestWeight = weightEntries[0] ?? null;
-    this.weekWorkoutCount = this.getCurrentWeekWorkouts(workouts).length;
-    this.weekVolume = this.getCurrentWeekWorkouts(workouts).reduce((sum, workout) => sum + this.calculateWorkoutVolume(workout), 0);
+    this.weekWorkoutCount = this.getCurrentWeekWorkouts(visibleWorkouts).length;
+    this.weekVolume = this.getCurrentWeekWorkouts(visibleWorkouts).reduce((sum, workout) => sum + this.calculateWorkoutVolume(workout), 0);
+    this.routineShortcuts = routines.slice(0, 3);
   }
 
   startTraining() {

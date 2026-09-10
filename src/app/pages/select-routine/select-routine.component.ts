@@ -1,5 +1,5 @@
 import { Component, effect, inject } from '@angular/core';
-import { Router } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import { RoutinesRepository, Routine, SelectedRoutineRepository } from '../../data/active-training.repository';
 import { CommonModule } from '@angular/common';
 import { TranslationService } from '../../services/translation.service';
@@ -7,11 +7,12 @@ import { AuthSessionService } from '../../auth/auth-session.service';
 import { RoutineApiService } from '../../routines/routine-api.service';
 import { RoutineListItem } from '../../routines/routine-domain';
 import { firstValueFrom } from 'rxjs';
+import { LocalToCloudMigrationService } from '../../migration/local-to-cloud-migration.service';
 
 @Component({
   selector: 'app-select-routine',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, RouterLink],
   templateUrl: './select-routine.component.html',
   styleUrls: ['./select-routine.component.css']
 })
@@ -19,6 +20,7 @@ export class SelectRoutineComponent {
   t = inject(TranslationService);
   readonly auth = inject(AuthSessionService);
   private readonly routineApi = inject(RoutineApiService);
+  private readonly migration = inject(LocalToCloudMigrationService);
   routines: RoutineListItem[] = [];
   loading = true;
   cloudPageNumber = 0;
@@ -31,7 +33,10 @@ export class SelectRoutineComponent {
 
   async loadRoutines(page = this.cloudPageNumber) {
     this.loading = true;
-    const local: RoutineListItem[] = (await RoutinesRepository.getAll()).map(routine => ({ source: 'local', routine }));
+    const rawLocal = await RoutinesRepository.getAll();
+    const accountId = this.auth.currentUser?.()?.id;
+    const migrated = accountId ? await Promise.all(rawLocal.map(routine => this.migration.isRoutineMigrated(accountId, routine.id))) : rawLocal.map(() => false);
+    const local: RoutineListItem[] = rawLocal.filter((_, index) => !migrated[index]).map(routine => ({ source: 'local', routine }));
     if (!this.auth.isAuthenticated()) {
       this.routines = local;
       this.loading = false;
