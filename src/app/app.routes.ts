@@ -30,6 +30,7 @@ export const routes: Routes = [
       { path: 'weight', component: WeightComponent, title: 'Weight' },
       { path: 'stats', component: StatsComponent, title: 'Stats' },
       { path: 'exercises', loadComponent: () => import('./pages/exercise-history/exercise-history.component').then(m => m.ExerciseHistoryComponent), title: 'Exercise History' },
+      { path: 'exercise-catalog', loadComponent: () => import('./pages/exercise-catalog/exercise-catalog.component').then(m => m.ExerciseCatalogComponent), title: 'Exercise Catalog' },
       { path: 'training', component: TrainingComponent, title: 'Training' },
       { path: 'settings', loadComponent: () => import('./pages/settings/settings.component').then(m => m.SettingsComponent), title: 'Settings' },
       { path: '', redirectTo: 'home', pathMatch: 'full' },

@@ -16,6 +16,7 @@
       @if (auth.isAuthenticated()) {
         <p class="font-semibold text-gray-900">{{ auth.currentUser()?.email }}</p>
         <p class="text-xs text-gray-500 mt-1">Cuenta conectada. Los entrenamientos existentes siguen siendo locales hasta la próxima fase.</p>
+        <a routerLink="/exercise-catalog" class="block w-full mt-3 text-center px-4 py-3 rounded-lg font-semibold text-sm bg-orange-600 text-white shadow hover:bg-orange-700 transition-all">Catálogo de ejercicios</a>
         <button (click)="logout()" class="w-full mt-3 px-4 py-3 rounded-lg font-semibold text-sm bg-gray-800 text-white shadow hover:bg-gray-900 transition-all">Cerrar sesión</button>
       } @else if (auth.isInitializing()) {
         <p class="text-sm text-gray-600">Comprobando la sesión…</p>
