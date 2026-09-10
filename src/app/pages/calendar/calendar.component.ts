@@ -1,84 +1,68 @@
-
 import { Component, OnInit, inject } from '@angular/core';
 import { WorkoutHistoryRepository } from '../../data/active-training.repository';
 import { WorkoutHistory } from '../../data/workout-history.model';
 import { CommonModule, DatePipe } from '@angular/common';
 import { RouterModule } from '@angular/router';
+import { firstValueFrom } from 'rxjs';
 import { TranslationService } from '../../services/translation.service';
+import { AuthSessionService } from '../../auth/auth-session.service';
+import { WorkoutApiService } from '../../workouts/workout-api.service';
+import { RoutineApiService } from '../../routines/routine-api.service';
+import { LocalToCloudMigrationService } from '../../migration/local-to-cloud-migration.service';
 
-@Component({
-  selector: 'app-calendar',
-  standalone: true,
-  imports: [CommonModule, DatePipe, RouterModule],
-  templateUrl: './calendar.component.html',
-  styleUrls: ['./calendar.component.css']
-})
+interface CalendarWorkoutItem {
+  source: 'local' | 'cloud'; id: string; routineName: string; startedAt: string; finishedAt: string | null; exerciseCount: number; local?: WorkoutHistory;
+}
+
+@Component({ selector: 'app-calendar', standalone: true, imports: [CommonModule, DatePipe, RouterModule], templateUrl: './calendar.component.html', styleUrls: ['./calendar.component.css'] })
 export class CalendarComponent implements OnInit {
   t = inject(TranslationService);
-    async onDeleteWorkout(w: WorkoutHistory) {
-      if (confirm(this.t.t('calendar.deleteConfirm'))) {
-        // Remove from IndexedDB
-        await WorkoutHistoryRepository.delete(w.id);
-        // Refresh list
-        await this.loadWorkouts();
-      }
-    }
-  view: 'week' | 'list' = 'week';
-  workouts: WorkoutHistory[] = [];
+  readonly auth = inject(AuthSessionService);
+  private readonly workoutApi = inject(WorkoutApiService);
+  private readonly routineApi = inject(RoutineApiService);
+  private readonly migration = inject(LocalToCloudMigrationService);
+  // Chronological sessions answer the primary question first; the week view remains one tap away.
+  view: 'week' | 'list' = 'list';
+  workouts: CalendarWorkoutItem[] = [];
+  cloudPageNumber = 0;
+  cloudTotalPages = 0;
+  cloudError: string | null = null;
   weekStart: Date = CalendarComponent.getStartOfWeek(new Date());
   weekDays: Date[] = [];
 
-  get weekWorkoutCount(): number {
-    return this.weekDays.reduce((acc, d) => acc + this.getWorkoutsForDay(d).length, 0);
-  }
+  get weekWorkoutCount(): number { return this.weekDays.reduce((acc, day) => acc + this.getWorkoutsForDay(day).length, 0); }
+  static getStartOfWeek(date: Date): Date { const d = new Date(date); const day = d.getDay(); d.setDate(d.getDate() - day + (day === 0 ? -6 : 1)); d.setHours(0, 0, 0, 0); return d; }
+  ngOnInit() { void this.loadWorkouts(); this.setWeekDays(); }
 
-  static getStartOfWeek(date: Date): Date {
-    const d = new Date(date);
-    const day = d.getDay();
-    // Monday as first day of week
-    const diff = d.getDate() - day + (day === 0 ? -6 : 1);
-    d.setDate(diff);
-    d.setHours(0,0,0,0);
-    return d;
+  async loadWorkouts(page = this.cloudPageNumber) {
+    const rawLocal = await WorkoutHistoryRepository.getAll();
+    const accountId = this.auth.currentUser?.()?.id;
+    const migrated = accountId ? await Promise.all(rawLocal.map(workout => this.migration.isWorkoutMigrated(accountId, workout.id))) : rawLocal.map(() => false);
+    const local = rawLocal.filter((_, index) => !migrated[index]);
+    const localItems = local.map(workout => ({ source: 'local' as const, id: workout.id, routineName: workout.routineName, startedAt: workout.startedAt, finishedAt: workout.finishedAt, exerciseCount: workout.exercises.length, local: workout }));
+    if (!this.auth.isAuthenticated()) { this.workouts = localItems; return; }
+    try {
+      const cloud = await firstValueFrom(this.workoutApi.list({ page, size: 10 }));
+      const names = await Promise.all(cloud.content.map(async workout => {
+        if (!workout.routineId) return 'Rutina cloud';
+        try { return (await firstValueFrom(this.routineApi.get(workout.routineId))).name; } catch { return 'Rutina cloud'; }
+      }));
+      this.cloudPageNumber = cloud.number; this.cloudTotalPages = cloud.totalPages;
+      this.workouts = [...localItems, ...cloud.content.map((workout, index) => ({ source: 'cloud' as const, id: workout.id, routineName: names[index], startedAt: workout.startedAt, finishedAt: workout.completedAt, exerciseCount: workout.exercises.length }))];
+      this.cloudError = null;
+    } catch {
+      // Deliberately retain legacy records even when cloud history cannot load.
+      this.workouts = localItems;
+      this.cloudError = 'No se pudo cargar el historial cloud. Tu historial local sigue disponible.';
+    }
   }
-
-  ngOnInit() {
-    this.loadWorkouts();
-    this.setWeekDays();
-  }
-
-  async loadWorkouts() {
-    this.workouts = await WorkoutHistoryRepository.getAll();
-  }
-
-  setWeekDays() {
-    this.weekDays = Array.from({ length: 7 }).map((_, i) => {
-      const d = new Date(this.weekStart);
-      d.setDate(this.weekStart.getDate() + i);
-      return d;
-    });
-  }
-
-  prevWeek() {
-    this.weekStart.setDate(this.weekStart.getDate() - 7);
-    this.setWeekDays();
-  }
-
-  nextWeek() {
-    this.weekStart.setDate(this.weekStart.getDate() + 7);
-    this.setWeekDays();
-  }
-
-  setView(view: 'week' | 'list') {
-    this.view = view;
-  }
-
-  isSameDay(dateStr: string, day: Date): boolean {
-    const d1 = new Date(dateStr);
-    return d1.getFullYear() === day.getFullYear() && d1.getMonth() === day.getMonth() && d1.getDate() === day.getDate();
-  }
-
-  getWorkoutsForDay(day: Date): WorkoutHistory[] {
-    return this.workouts.filter(w => this.isSameDay(w.startedAt, day));
-  }
+  async onDeleteWorkout(workout: CalendarWorkoutItem) { if (workout.source === 'local' && workout.local && confirm(this.t.t('calendar.deleteConfirm'))) { await WorkoutHistoryRepository.delete(workout.local.id); await this.loadWorkouts(); } }
+  setWeekDays() { this.weekDays = Array.from({ length: 7 }, (_, i) => { const day = new Date(this.weekStart); day.setDate(day.getDate() + i); return day; }); }
+  prevWeek() { this.weekStart.setDate(this.weekStart.getDate() - 7); this.setWeekDays(); }
+  nextWeek() { this.weekStart.setDate(this.weekStart.getDate() + 7); this.setWeekDays(); }
+  setView(view: 'week' | 'list') { this.view = view; }
+  isSameDay(dateStr: string, day: Date): boolean { const date = new Date(dateStr); return date.getFullYear() === day.getFullYear() && date.getMonth() === day.getMonth() && date.getDate() === day.getDate(); }
+  getWorkoutsForDay(day: Date): CalendarWorkoutItem[] { return this.workouts.filter(workout => this.isSameDay(workout.startedAt, day)); }
+  async previousCloudPage() { if (this.cloudPageNumber > 0) await this.loadWorkouts(this.cloudPageNumber - 1); }
+  async nextCloudPage() { if (this.cloudPageNumber + 1 < this.cloudTotalPages) await this.loadWorkouts(this.cloudPageNumber + 1); }
 }

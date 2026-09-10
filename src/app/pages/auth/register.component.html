@@ -1,0 +1,27 @@
+<main class="auth-page min-h-[100dvh] bg-gray-50 px-4 py-8 flex items-center">
+  <section class="w-full max-w-md mx-auto bg-white rounded-2xl shadow-md border border-gray-100 p-6">
+    <a routerLink="/home" class="text-sm font-semibold text-orange-700">← Volver al modo local</a>
+    <div class="app-kicker">Opcional, siempre</div><h1 class="text-3xl font-black text-gray-900 mt-2">Crear cuenta</h1>
+    <p class="text-sm text-gray-600 mt-2">Podrás iniciar sesión al terminar. Registrarse no borra ni sincroniza tus datos locales todavía.</p>
+
+    <form class="mt-6 space-y-4" (ngSubmit)="submit()">
+      <label class="block text-sm font-bold text-gray-700">
+        Correo electrónico
+        <input [(ngModel)]="email" name="email" type="email" autocomplete="email" required class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-3" />
+      </label>
+      <label class="block text-sm font-bold text-gray-700">
+        Contraseña
+        <input [(ngModel)]="password" name="password" type="password" autocomplete="new-password" required minlength="8" maxlength="100" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-3" />
+      </label>
+      <p class="text-xs text-gray-500">Entre 8 y 100 caracteres.</p>
+      @if (error()) {
+        <p class="rounded-lg bg-red-50 p-3 text-sm font-medium text-red-700" role="alert">{{ error() }}</p>
+      }
+      <button type="submit" [disabled]="submitting()" class="w-full rounded-lg bg-orange-600 px-4 py-3 font-bold text-white disabled:opacity-50">
+        {{ submitting() ? 'Creando cuenta…' : 'Crear cuenta' }}
+      </button>
+    </form>
+
+    <p class="mt-5 text-sm text-gray-600">¿Ya tienes cuenta? <a routerLink="/login" class="font-bold text-orange-700">Iniciar sesión</a></p>
+  </section>
+</main>

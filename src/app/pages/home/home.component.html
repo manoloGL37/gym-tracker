@@ -1,88 +1,16 @@
-<div class="home-page flex flex-col flex-1">
-  <div class="home-hero text-white px-5 pt-7 pb-16 relative overflow-hidden">
-    <div class="hero-orb"></div>
-    <a routerLink="/settings" class="absolute top-5 right-5 p-2.5 bg-white/10 hover:bg-white/20 rounded-xl transition-all" [attr.aria-label]="t.t('settings.title')">
-      <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
-    </a>
-    <div class="app-kicker !text-emerald-200 mb-2">{{ t.t('home.kicker') }}</div>
-    <h1 class="text-4xl font-black tracking-tight">{{ t.t('home.greeting') }}</h1>
-    <div class="text-emerald-100/80 text-sm mt-2 capitalize">
-      {{ formattedDate() }}
-    </div>
-  </div>
-
-  <div class="px-4 -mt-9 relative z-[1]">
+<div class="home-page">
+  <header class="home-brief"><div><span class="app-kicker">{{ formattedDate() }}</span><h1>Tu próximo movimiento.</h1></div><a routerLink="/settings" class="home-brief__settings" [attr.aria-label]="t.t('settings.title')">⚙</a></header>
+  <main class="home-dashboard">
     @if (activeTraining) {
-      <button (click)="startTraining()" class="resume-card w-full text-left text-white rounded-2xl p-5 mb-4 shadow-xl active:scale-[.98] transition-all">
-        <div class="flex items-center justify-between gap-4">
-          <div>
-            <div class="text-xs font-black uppercase tracking-[.18em] text-emerald-100">{{ t.t('home.activeTraining') }}</div>
-            <div class="text-xl font-black mt-1">{{ activeTraining.routineName }}</div>
-            <div class="text-sm text-emerald-50/80 mt-1">{{ activeTraining.exercises.length }} {{ t.t('calendar.exercises') }}</div>
-          </div>
-          <div class="w-12 h-12 rounded-full bg-white/15 flex items-center justify-center">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 12h14m-6-6 6 6-6 6"/>
-            </svg>
-          </div>
-        </div>
-      </button>
+      <button (click)="startTraining()" class="next-session next-session--resume"><span class="next-session__state">Sesión abierta · {{ activeTraining.exercises.length }} ejercicios</span><strong>{{ activeTraining.routineName }}</strong><small>Volver a registrar series <b>→</b></small></button>
+    } @else {
+      <button (click)="startTraining()" class="next-session"><span class="next-session__state">Listo cuando tú lo estés</span><strong>Empezar a entrenar</strong><small>Elige una rutina <b>→</b></small></button>
     }
-
-    <button
-      (click)="startTraining()"
-      class="primary-action w-full text-white text-lg font-black rounded-2xl py-5 mb-3 active:scale-[.98] focus:outline-none transition-all"
-    >
-      {{ activeTraining ? t.t('home.resumeTraining') : t.t('home.startTraining') }}
-    </button>
-
-    <!-- Add workout button -->
-    <button
-      (click)="addWorkout()"
-      class="w-full bg-white/80 border border-gray-200 text-gray-700 text-sm font-bold rounded-2xl py-4 mb-8 active:scale-[.98] focus:outline-none transition-transform"
-    >
-      {{ t.t('addWorkout.title') }}
-    </button>
-
-    <div class="app-card p-5 mb-4">
-      <div class="app-kicker mb-3">{{ t.t('home.weekSummary') }}</div>
-      <div class="grid grid-cols-3 gap-3">
-        <div>
-          <div class="text-2xl font-black text-gray-900">{{ weekWorkoutCount }}</div>
-          <div class="text-[11px] font-bold text-gray-500 uppercase tracking-wide">{{ t.t('home.weekWorkouts') }}</div>
-        </div>
-        <div>
-          <div class="text-2xl font-black text-gray-900">{{ weekVolume | number:'1.0-0' }}</div>
-          <div class="text-[11px] font-bold text-gray-500 uppercase tracking-wide">{{ t.t('home.weekVolume') }}</div>
-        </div>
-        <div>
-          <div class="text-2xl font-black text-gray-900">
-            @if (latestWeight) {
-              {{ latestWeight.weight | number:'1.1-1' }}
-            } @else {
-              —
-            }
-          </div>
-          <div class="text-[11px] font-bold text-gray-500 uppercase tracking-wide">{{ t.t('home.latestWeight') }}</div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Last workout section -->
-    <div class="app-card p-5">
-      <div class="app-kicker mb-2">{{ t.t('home.activity') }}</div>
-      <h2 class="text-xl font-black mb-4 text-gray-900">{{ t.t('home.lastWorkout') }}</h2>
-      @if (lastWorkout) {
-        <a [routerLink]="['/calendar', lastWorkout.id]" class="block bg-emerald-50/60 border border-emerald-100 rounded-xl p-4">
-          <div class="text-base font-bold text-gray-900 mb-1">{{ lastWorkout.routineName }}</div>
-          <div class="text-gray-700 text-sm mb-1">{{ lastWorkout.finishedAt | date:'short' }}</div>
-          <div class="text-gray-700 text-sm font-medium">
-            {{ lastWorkout.exercises.length }} {{ t.t('calendar.list') | lowercase }}
-          </div>
-        </a>
-      } @else {
-        <div class="text-gray-400 text-center py-4">{{ t.t('calendar.noWorkouts') }}</div>
-      }
-    </div>
-  </div>
+    <section class="dashboard-section routine-shortcuts"><div class="section-heading"><div><span class="app-kicker">Acceso rápido</span><h2>Tus rutinas</h2></div><a routerLink="/routines">Ver todas</a></div>
+      @if (routineShortcuts.length) { <div class="shortcut-list">@for (routine of routineShortcuts; track routine.id; let i = $index) { <a routerLink="/select-routine"><span>{{ i + 1 }}</span><strong>{{ routine.name }}</strong><small>{{ routine.exercises.length }} ejercicios</small><b>→</b></a> }</div> } @else { <a class="routine-empty" routerLink="/routines">Crea una rutina para tener un acceso rápido <b>→</b></a> }
+    </section>
+    <section class="dashboard-section training-pulse"><div class="section-heading"><div><span class="app-kicker">Esta semana</span><h2>Ritmo de entrenamiento</h2></div><a routerLink="/stats">Detalle</a></div><div class="pulse-values"><div><strong class="metric-value">{{ weekWorkoutCount }}</strong><span>sesiones</span></div><div><strong class="metric-value">{{ weekVolume | number:'1.0-0' }}</strong><span>kg de volumen</span></div><div><strong class="metric-value">@if (latestWeight) { {{ latestWeight.weight | number:'1.1-1' }} } @else { — }</strong><span>peso corporal</span></div></div></section>
+    <section class="dashboard-section latest-session"><div class="section-heading"><div><span class="app-kicker">Última sesión</span><h2>Actividad reciente</h2></div><a routerLink="/calendar">Historial</a></div>@if (lastWorkout) { <a [routerLink]="['/calendar', lastWorkout.id]" class="latest-row"><span>{{ lastWorkout.finishedAt | date:'dd' }}</span><div><strong>{{ lastWorkout.routineName }}</strong><small>{{ lastWorkout.finishedAt | date:'MMM y' }} · {{ lastWorkout.exercises.length }} ejercicios</small></div><b>→</b></a> } @else { <p class="home-empty">Tu primera sesión aparecerá aquí.</p> }</section>
+    <button (click)="addWorkout()" class="home-manual">Registrar entrenamiento anterior</button>
+  </main>
 </div>

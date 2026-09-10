@@ -4,6 +4,8 @@ import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { WorkoutHistoryRepository } from '../../data/active-training.repository';
 import { WorkoutHistory } from '../../data/workout-history.model';
+import { AuthSessionService } from '../../auth/auth-session.service';
+import { LocalToCloudMigrationService } from '../../migration/local-to-cloud-migration.service';
 import { TranslationService } from '../../services/translation.service';
 
 interface ExerciseSession {
@@ -35,6 +37,8 @@ interface ExerciseSummary {
 })
 export class ExerciseHistoryComponent implements OnInit {
   t = inject(TranslationService);
+  private readonly auth = inject(AuthSessionService);
+  private readonly migration = inject(LocalToCloudMigrationService);
 
   loading = signal(true);
   summaries = signal<ExerciseSummary[]>([]);
@@ -46,7 +50,10 @@ export class ExerciseHistoryComponent implements OnInit {
   });
 
   async ngOnInit() {
-    const workouts = await WorkoutHistoryRepository.getAll();
+    const rawWorkouts = await WorkoutHistoryRepository.getAll();
+    const accountId = this.auth.currentUser?.()?.id;
+    const migrated = accountId ? await Promise.all(rawWorkouts.map(workout => this.migration.isWorkoutMigrated(accountId, workout.id))) : rawWorkouts.map(() => false);
+    const workouts = rawWorkouts.filter((_, index) => !migrated[index]);
     const summaries = this.buildSummaries(workouts);
     this.summaries.set(summaries);
     this.selectedExerciseName.set(summaries[0]?.name ?? '');

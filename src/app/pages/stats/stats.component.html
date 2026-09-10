@@ -1,166 +1,245 @@
-<div class="flex flex-col bg-gray-50" style="min-height: 100dvh;">
-
-  <!-- Header -->
-  <div class="bg-gradient-to-br from-orange-500 to-orange-700 text-white px-4 pt-5 pb-7 shadow-lg">
-    <div class="flex items-start justify-between gap-3 mb-4">
-      <h1 class="text-2xl font-black">{{ t.t('stats.title') }}</h1>
-      <a routerLink="/exercises" class="px-3 py-2 rounded-lg bg-white/15 text-white text-xs font-bold hover:bg-white/25 transition-all">
-        {{ t.t('exerciseHistory.shortTitle') }}
-      </a>
+<main class="stats-page">
+  <header class="stats-header">
+    <div class="stats-header__top">
+      <div>
+        <p class="stats-header__kicker">{{ t.t('stats.trainingPulse') }}</p>
+        <h1>{{ t.t('stats.title') }}</h1>
+      </div>
+      <a routerLink="/exercises" class="history-link">{{ t.t('exerciseHistory.shortTitle') }}</a>
     </div>
 
-    <!-- Period selector -->
-    <div class="flex gap-2 mb-3">
-      <button
-        (click)="setPeriod('week')"
-        [ngClass]="selectedPeriod() === 'week' ? 'bg-white text-orange-600' : 'bg-orange-600 text-white'"
-        class="px-4 py-2 rounded-xl font-bold text-sm transition-all">
-        {{ t.t('stats.weekly') }}
-      </button>
-      <button
-        (click)="setPeriod('month')"
-        [ngClass]="selectedPeriod() === 'month' ? 'bg-white text-orange-600' : 'bg-orange-600 text-white'"
-        class="px-4 py-2 rounded-xl font-bold text-sm transition-all">
-        {{ t.t('stats.monthly') }}
-      </button>
+    <div class="stats-controls">
+      <div class="segmented" role="group" [attr.aria-label]="t.t('stats.periodLabel')">
+        <button type="button" (click)="setPeriod('week')" [class.is-active]="selectedPeriod() === 'week'" [attr.aria-pressed]="selectedPeriod() === 'week'">
+          {{ t.t('stats.weekly') }}
+        </button>
+        <button type="button" (click)="setPeriod('month')" [class.is-active]="selectedPeriod() === 'month'" [attr.aria-pressed]="selectedPeriod() === 'month'">
+          {{ t.t('stats.monthly') }}
+        </button>
+      </div>
+
+      <div *ngIf="auth.isAuthenticated()" class="source-switch" role="group" [attr.aria-label]="t.t('stats.sourceLabel')">
+        <button type="button" (click)="setSource('local')" [class.is-active]="source() === 'local'" [attr.aria-pressed]="source() === 'local'">
+          {{ t.t('stats.onDevice') }}
+        </button>
+        <button type="button" (click)="setSource('cloud')" [class.is-active]="source() === 'cloud'" [attr.aria-pressed]="source() === 'cloud'">
+          {{ t.t('stats.inAccount') }}
+        </button>
+      </div>
     </div>
-    <!-- Period date range -->
-    <div class="text-orange-100 text-xs font-semibold">{{ getPeriodLabel() }}</div>
+
+    <div class="stats-header__context">
+      <span class="source-badge" [class.source-badge--cloud]="source() === 'cloud'">
+        {{ source() === 'cloud' ? t.t('stats.inAccount') : t.t('stats.onDevice') }}
+      </span>
+      <span class="stats-range">{{ getPeriodLabel() }}</span>
+    </div>
+    <p *ngIf="source() === 'cloud'" class="source-note">{{ t.t('stats.cloudSeparate') }}</p>
+  </header>
+
+  <div class="stats-content">
+    <section *ngIf="error()" class="status-panel status-panel--error" role="alert">
+      <div>
+        <strong>{{ t.t('stats.loadErrorTitle') }}</strong>
+        <p>{{ error() }}</p>
+      </div>
+      <div class="status-actions">
+        <button type="button" class="primary-button" (click)="loadStats()">{{ t.t('stats.retry') }}</button>
+        <button *ngIf="auth.isAuthenticated() && source() === 'cloud'" type="button" class="secondary-button" (click)="setSource('local')">
+          {{ t.t('stats.viewLocal') }}
+        </button>
+      </div>
+    </section>
+
+    <section *ngIf="loading()" class="loading-state" aria-live="polite" aria-busy="true">
+      <div class="loading-state__line"></div>
+      <div class="loading-state__line loading-state__line--short"></div>
+      <span>{{ t.t('stats.loading') }}</span>
+    </section>
+
+    <ng-container *ngIf="!loading() && !error()">
+      <section class="metric-band" [attr.aria-label]="t.t('stats.periodSummary')">
+        <article class="metric metric--lead">
+          <span class="metric__label">{{ t.t('stats.sessions') }}</span>
+          <strong class="metric__value">{{ currentStats().workoutCount | number:'1.0-0' }}</strong>
+          <span class="metric__comparison" *ngIf="hasPreviousValue('workouts'); else noWorkoutBase">
+            {{ previousStats().workoutCount | number:'1.0-0' }} {{ t.t('stats.previous') }} ·
+            {{ comparisonFor('workouts') > 0 ? '+' : '' }}{{ comparisonFor('workouts') | number:'1.0-1' }}%
+          </span>
+          <ng-template #noWorkoutBase><span class="metric__comparison">{{ t.t('stats.noPreviousBase') }}</span></ng-template>
+        </article>
+
+        <article class="metric metric--volume">
+          <span class="metric__label">{{ t.t('stats.totalVolume') }}</span>
+          <strong class="metric__value">{{ currentStats().totalVolume | number:'1.0-0' }} <small>kg</small></strong>
+          <span class="metric__comparison" *ngIf="hasPreviousValue('volume'); else noVolumeBase">
+            {{ previousStats().totalVolume | number:'1.0-0' }} kg {{ t.t('stats.previous') }} ·
+            {{ comparisonFor('volume') > 0 ? '+' : '' }}{{ comparisonFor('volume') | number:'1.0-1' }}%
+          </span>
+          <ng-template #noVolumeBase><span class="metric__comparison">{{ t.t('stats.noPreviousBase') }}</span></ng-template>
+        </article>
+
+        <article class="metric">
+          <span class="metric__label">{{ t.t('stats.sets') }}</span>
+          <strong class="metric__value">{{ currentStats().totalSets | number:'1.0-0' }}</strong>
+          <span class="metric__comparison" *ngIf="hasPreviousValue('sets'); else noSetsBase">
+            {{ previousStats().totalSets | number:'1.0-0' }} {{ t.t('stats.previous') }} ·
+            {{ comparisonFor('sets') > 0 ? '+' : '' }}{{ comparisonFor('sets') | number:'1.0-1' }}%
+          </span>
+          <ng-template #noSetsBase><span class="metric__comparison">{{ t.t('stats.noPreviousBase') }}</span></ng-template>
+        </article>
+
+        <article class="metric">
+          <span class="metric__label">{{ t.t('stats.reps') }}</span>
+          <strong class="metric__value">{{ currentStats().totalReps | number:'1.0-0' }}</strong>
+          <span class="metric__comparison" *ngIf="hasPreviousValue('reps'); else noRepsBase">
+            {{ previousStats().totalReps | number:'1.0-0' }} {{ t.t('stats.previous') }} ·
+            {{ comparisonFor('reps') > 0 ? '+' : '' }}{{ comparisonFor('reps') | number:'1.0-1' }}%
+          </span>
+          <ng-template #noRepsBase><span class="metric__comparison">{{ t.t('stats.noPreviousBase') }}</span></ng-template>
+        </article>
+      </section>
+
+      <section *ngIf="currentStats().workoutCount === 0" class="empty-state stats-empty">
+        <div class="empty-state__mark" aria-hidden="true">0</div>
+        <div>
+          <h2>{{ t.t('stats.noData') }}</h2>
+          <p>{{ t.t('stats.startTraining') }}</p>
+        </div>
+      </section>
+
+      <div class="analytics-grid">
+        <section *ngIf="currentStats().workoutCount > 0" class="chart-panel chart-panel--hero">
+          <div class="section-heading">
+            <div>
+              <p class="app-kicker">{{ t.t('stats.evolutionKicker') }}</p>
+              <h2>{{ t.t('stats.trainingEvolution') }}</h2>
+              <p>{{ t.t('stats.volumeEvolutionHelp') }}</p>
+            </div>
+            <strong class="chart-total">{{ currentStats().totalVolume | number:'1.0-0' }} <small>kg</small></strong>
+          </div>
+          <div class="chart-wrap chart-wrap--hero">
+            <canvas baseChart type="line" [data]="evolutionChartData()" [options]="evolutionChartOptions()" role="img" [attr.aria-label]="evolutionDescription()"></canvas>
+          </div>
+          <p class="chart-caption">{{ t.t('stats.onlyTrainingDays') }}</p>
+        </section>
+
+        <section class="chart-panel chart-panel--rhythm">
+          <div class="section-heading">
+            <div>
+              <p class="app-kicker">{{ t.t('stats.weeklyKicker') }}</p>
+              <h2>{{ t.t('stats.weeklyProgress') }}</h2>
+              <p>{{ t.t('stats.weeklyProgressHelp') }}</p>
+            </div>
+          </div>
+
+          <form class="week-range" (ngSubmit)="applyWeeklyRange()">
+            <label>
+              <span>{{ t.t('stats.weekFrom') }}</span>
+              <input type="week" name="weekFrom" [(ngModel)]="weekFrom" required>
+            </label>
+            <label>
+              <span>{{ t.t('stats.weekTo') }}</span>
+              <input type="week" name="weekTo" [(ngModel)]="weekTo" required>
+            </label>
+            <button type="submit" class="secondary-button" [disabled]="weeklyLoading()">
+              {{ weeklyLoading() ? t.t('stats.loading') : t.t('stats.applyRange') }}
+            </button>
+          </form>
+
+          <p *ngIf="weeklyError()" class="inline-error" role="alert">{{ weeklyError() }}</p>
+          <div *ngIf="weeklyLoading()" class="exercise-loading" aria-live="polite" aria-busy="true">{{ t.t('stats.weeklyLoading') }}</div>
+          <div *ngIf="!weeklyLoading() && !weeklyError() && weeklyProgress().length === 0" class="exercise-empty">
+            <strong>{{ t.t('stats.weeklyNoData') }}</strong>
+          </div>
+          <div *ngIf="!weeklyLoading() && weeklyProgress().length > 0" class="chart-wrap chart-wrap--bars">
+            <canvas baseChart type="line" [data]="weeklyChartData()" [options]="weeklyChartOptions()" role="img" [attr.aria-label]="t.t('stats.weeklyDescription')"></canvas>
+          </div>
+          <ul *ngIf="weeklyProgress().length > 0" class="activity-list" [attr.aria-label]="t.t('stats.weeklyDetail')">
+            <li *ngFor="let point of weeklyProgress()">
+              <span>{{ weekRangeLabel(point) }}</span>
+              <span>{{ point.workouts }} {{ point.workouts === 1 ? t.t('stats.workout') : t.t('stats.workouts') }}</span>
+              <strong>{{ point.volume | number:'1.0-0' }} kg</strong>
+            </li>
+          </ul>
+        </section>
+      </div>
+
+      <section *ngIf="source() === 'cloud'" class="exercise-panel">
+        <div class="section-heading exercise-panel__heading">
+          <div>
+            <p class="app-kicker">{{ t.t('stats.exerciseKicker') }}</p>
+            <h2>{{ t.t('stats.exerciseProgression') }}</h2>
+            <p>{{ t.t('stats.exerciseProgressionHelp') }}</p>
+          </div>
+          <span class="source-badge source-badge--cloud">{{ t.t('stats.inAccount') }}</span>
+        </div>
+
+        <form class="exercise-search" (ngSubmit)="searchExercises()">
+          <label for="exercise-search">{{ t.t('stats.searchExercise') }}</label>
+          <div class="exercise-search__row">
+            <input id="exercise-search" name="exerciseSearch" type="search" [(ngModel)]="exerciseSearch" [placeholder]="t.t('stats.searchExercisePlaceholder')" autocomplete="off">
+            <button type="submit" class="primary-button" [disabled]="exercisesLoading()">
+              {{ exercisesLoading() ? t.t('stats.searching') : t.t('stats.search') }}
+            </button>
+          </div>
+        </form>
+
+        <p *ngIf="exerciseSearchError()" class="inline-error" role="alert">{{ exerciseSearchError() }}</p>
+        <p *ngIf="!exercisesLoading() && !exerciseSearchError() && exerciseResults().length === 0" class="exercise-hint">
+          {{ t.t('stats.exerciseSearchHint') }}
+        </p>
+
+        <div *ngIf="exerciseResults().length > 0" class="exercise-select">
+          <label for="exercise-result">{{ t.t('stats.chooseExercise') }}</label>
+          <select id="exercise-result" name="exerciseResult" [ngModel]="selectedExerciseId" (ngModelChange)="selectExercise($event)">
+            <option value="">{{ t.t('stats.chooseExercisePlaceholder') }}</option>
+            <option *ngFor="let exercise of exerciseResults()" [value]="exercise.id">{{ exerciseName(exercise) }}</option>
+          </select>
+        </div>
+
+        <div *ngIf="exerciseStatsLoading()" class="exercise-loading" aria-live="polite" aria-busy="true">
+          {{ t.t('stats.exerciseLoading') }}
+        </div>
+
+        <div *ngIf="exerciseStatsError()" class="status-panel status-panel--error" role="alert">
+          <p>{{ exerciseStatsError() }}</p>
+          <button type="button" class="secondary-button" (click)="loadExerciseStats()">{{ t.t('stats.retry') }}</button>
+        </div>
+
+        <ng-container *ngIf="exerciseStats() as selectedStats">
+          <div class="exercise-result-panel">
+            <div class="exercise-result-panel__title">
+              <div>
+                <span>{{ t.t('stats.selectedExercise') }}</span>
+                <h3>{{ selectedExercise() ? exerciseName(selectedExercise()!) : selectedStats.exerciseId }}</h3>
+              </div>
+            </div>
+            <div class="exercise-metrics">
+              <span><strong>{{ selectedStats.totalSets | number:'1.0-0' }}</strong>{{ t.t('stats.sets') }}</span>
+              <span><strong>{{ selectedStats.totalReps | number:'1.0-0' }}</strong>{{ t.t('stats.reps') }}</span>
+              <span><strong>{{ selectedStats.totalVolume | number:'1.0-0' }} kg</strong>{{ t.t('stats.volume') }}</span>
+              <span><strong>{{ selectedStats.maxWeight | number:'1.0-1' }} kg</strong>{{ t.t('stats.maxWeight') }}</span>
+            </div>
+            <div *ngIf="exerciseWeeklyProgress().length === 0" class="exercise-empty">
+              <strong>{{ t.t('stats.exerciseNoData') }}</strong>
+              <p>{{ t.t('stats.exerciseNoDataHelp') }}</p>
+            </div>
+            <div *ngIf="exerciseWeeklyProgress().length > 0" class="chart-wrap chart-wrap--exercise">
+              <canvas baseChart type="line" [data]="exerciseChartData()" [options]="exerciseChartOptions()" role="img" [attr.aria-label]="exerciseEvolutionDescription()"></canvas>
+            </div>
+          </div>
+        </ng-container>
+      </section>
+
+      <section *ngIf="source() === 'local'" class="local-history-callout">
+        <div>
+          <p class="app-kicker">{{ t.t('stats.localHistoryKicker') }}</p>
+          <h2>{{ t.t('stats.localExerciseHistory') }}</h2>
+          <p>{{ t.t('stats.localExerciseHistoryHelp') }}</p>
+        </div>
+        <a routerLink="/exercises" class="secondary-button">{{ t.t('stats.openLocalHistory') }}</a>
+      </section>
+    </ng-container>
   </div>
-
-  <div class="px-4 pt-4 pb-8">
-    <div *ngIf="!loading()" class="space-y-4">
-
-      <!-- KPI cards -->
-      <div class="grid grid-cols-2 gap-3">
-
-        <!-- Sesiones -->
-        <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden flex flex-col">
-          <div class="h-1 bg-blue-500 w-full"></div>
-          <div class="p-4 flex flex-col flex-1">
-            <!-- Icon + label -->
-            <div class="flex items-center gap-2 mb-3">
-              <div class="w-7 h-7 bg-blue-50 rounded-lg flex items-center justify-center shrink-0">
-                <svg class="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
-                </svg>
-              </div>
-              <span class="text-xs font-bold text-gray-500 uppercase tracking-wide">Sesiones</span>
-            </div>
-            <!-- Value -->
-            <div class="text-4xl font-black text-gray-900 leading-none">{{ currentStats().workoutCount }}</div>
-            <!-- Comparison -->
-            <div class="mt-auto pt-3">
-              <ng-container *ngIf="getTrend(currentStats().workoutCount, previousStats().workoutCount) !== 'none'">
-                <div class="text-xs text-gray-400 mb-1">vs {{ previousStats().workoutCount }} anterior</div>
-                <span class="inline-flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-full"
-                      [ngClass]="{
-                        'bg-green-100 text-green-700': getTrend(currentStats().workoutCount, previousStats().workoutCount) === 'up',
-                        'bg-red-100 text-red-600': getTrend(currentStats().workoutCount, previousStats().workoutCount) === 'down',
-                        'bg-gray-100 text-gray-500': getTrend(currentStats().workoutCount, previousStats().workoutCount) === 'equal'
-                      }">
-                  <ng-container *ngIf="getTrend(currentStats().workoutCount, previousStats().workoutCount) === 'up'"><svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="m18 15-6-6-6 6"/></svg> +{{ currentStats().workoutCount - previousStats().workoutCount }}</ng-container>
-                  <ng-container *ngIf="getTrend(currentStats().workoutCount, previousStats().workoutCount) === 'down'"><svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="m6 9 6 6 6-6"/></svg> {{ currentStats().workoutCount - previousStats().workoutCount }}</ng-container>
-                  <ng-container *ngIf="getTrend(currentStats().workoutCount, previousStats().workoutCount) === 'equal'">Sin cambios</ng-container>
-                </span>
-              </ng-container>
-              <div *ngIf="getTrend(currentStats().workoutCount, previousStats().workoutCount) === 'none'"
-                   class="text-xs text-gray-300 italic">Sin periodo previo</div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Volumen -->
-        <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden flex flex-col">
-          <div class="h-1 bg-orange-500 w-full"></div>
-          <div class="p-4 flex flex-col flex-1">
-            <!-- Icon + label -->
-            <div class="flex items-center gap-2 mb-3">
-              <div class="w-7 h-7 bg-orange-50 rounded-lg flex items-center justify-center shrink-0">
-                <svg class="w-4 h-4 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12h2m14 0h2M5.6 5.6l1.4 1.4m9.9 9.9l1.4 1.4M5.6 18.4l1.4-1.4m9.9-9.9l1.4-1.4M8 12a4 4 0 108 0 4 4 0 00-8 0z"/>
-                </svg>
-              </div>
-              <span class="text-xs font-bold text-gray-500 uppercase tracking-wide">Volumen</span>
-            </div>
-            <!-- Value -->
-            <div class="text-4xl font-black text-gray-900 leading-none">{{ currentStats().totalVolume | number:'1.0-0' }}</div>
-            <div class="text-xs text-gray-400 mt-1">kg levantados</div>
-            <!-- Comparison -->
-            <div class="mt-auto pt-3">
-              <ng-container *ngIf="getTrend(currentStats().totalVolume, previousStats().totalVolume) !== 'none'">
-                <div class="text-xs text-gray-400 mb-1">vs {{ previousStats().totalVolume | number:'1.0-0' }} kg anterior</div>
-                <span class="inline-flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-full"
-                      [ngClass]="{
-                        'bg-green-100 text-green-700': getTrend(currentStats().totalVolume, previousStats().totalVolume) === 'up',
-                        'bg-red-100 text-red-600': getTrend(currentStats().totalVolume, previousStats().totalVolume) === 'down',
-                        'bg-gray-100 text-gray-500': getTrend(currentStats().totalVolume, previousStats().totalVolume) === 'equal'
-                      }">
-                  <ng-container *ngIf="getTrend(currentStats().totalVolume, previousStats().totalVolume) === 'up'"><svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="m18 15-6-6-6 6"/></svg> +{{ currentStats().totalVolume - previousStats().totalVolume | number:'1.0-0' }} kg</ng-container>
-                  <ng-container *ngIf="getTrend(currentStats().totalVolume, previousStats().totalVolume) === 'down'"><svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="m6 9 6 6 6-6"/></svg> {{ currentStats().totalVolume - previousStats().totalVolume | number:'1.0-0' }} kg</ng-container>
-                  <ng-container *ngIf="getTrend(currentStats().totalVolume, previousStats().totalVolume) === 'equal'">Sin cambios</ng-container>
-                </span>
-              </ng-container>
-              <div *ngIf="getTrend(currentStats().totalVolume, previousStats().totalVolume) === 'none'"
-                   class="text-xs text-gray-300 italic">Sin periodo previo</div>
-            </div>
-          </div>
-        </div>
-
-      </div>
-
-      <!-- Daily Distribution -->
-      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5" *ngIf="currentStats().workoutCount > 0">
-        <div class="text-sm font-bold text-gray-800 mb-4">{{ t.t('stats.dailyDistribution') }}</div>
-        <div class="space-y-2">
-          <div *ngFor="let day of currentStats().dailyDistribution" class="flex items-center gap-3">
-            <!-- Day label -->
-            <div class="w-10 shrink-0 text-right">
-              <span class="text-xs font-semibold"
-                    [ngClass]="day.count > 0 ? 'text-gray-700' : 'text-gray-300'">
-                {{ day.date | date:'EEE d' }}
-              </span>
-            </div>
-            <!-- Bar -->
-            <div class="flex-1 h-8 bg-gray-100 rounded-lg overflow-hidden relative">
-              <div class="h-full rounded-lg transition-all bg-gradient-to-r from-orange-400 to-orange-500"
-                   [style.width.%]="day.volume > 0 ? (day.volume / getMaxVolume() * 100) : 0">
-              </div>
-              <div *ngIf="day.count > 0" class="absolute inset-0 flex items-center justify-between px-2.5">
-                <span class="text-xs font-bold text-gray-800">
-                  {{ day.count }} {{ day.count === 1 ? t.t('stats.workout') : t.t('stats.workouts') }}
-                </span>
-                <span class="text-xs font-semibold text-gray-600">
-                  {{ day.volume | number:'1.0-0' }} kg
-                </span>
-              </div>
-              <!-- Rest day label -->
-              <div *ngIf="day.count === 0" class="absolute inset-0 flex items-center px-2.5">
-                <span class="text-xs text-gray-300">Descanso</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Empty state -->
-      <div *ngIf="currentStats().workoutCount === 0" class="bg-white rounded-2xl border border-gray-100 shadow-sm text-center py-14 px-6 mt-2">
-        <div class="w-16 h-16 mx-auto mb-4 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
-          <svg class="w-9 h-9" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 7v10m12-10v10M3 9v6m18-6v6M6 12h12"/>
-          </svg>
-        </div>
-        <div class="text-gray-700 font-bold text-base">{{ t.t('stats.noData') }}</div>
-        <div class="text-gray-400 text-sm mt-1">{{ t.t('stats.startTraining') }}</div>
-      </div>
-
-    </div>
-
-    <!-- Loading -->
-    <div *ngIf="loading()" class="text-center py-16">
-      <div class="inline-block animate-spin rounded-full h-10 w-10 border-4 border-orange-400 border-t-transparent"></div>
-      <div class="text-gray-400 text-sm mt-4">{{ t.t('stats.loading') }}</div>
-    </div>
-  </div>
-</div>
-
+</main>
