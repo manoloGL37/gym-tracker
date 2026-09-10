@@ -1,84 +1,39 @@
 <div class="flex flex-col flex-1 bg-gray-50 pb-4">
-  <!-- Header -->
-  <div class="bg-gradient-to-br from-orange-500 to-orange-700 text-white px-4 pt-4 pb-6 shadow-lg">
-    <h1 class="text-2xl font-bold mb-1">{{ t.t('routines.title') }}</h1>
-    <div class="text-orange-100 text-sm">{{ t.t('routines.subtitle') }}</div>
-  </div>
-
+  <div class="bg-gradient-to-br from-orange-500 to-orange-700 text-white px-4 pt-4 pb-6 shadow-lg"><h1 class="text-2xl font-bold mb-1">{{ t.t('routines.title') }}</h1><div class="text-orange-100 text-sm">{{ t.t('routines.subtitle') }}</div></div>
   <div class="flex-1 px-4 pt-4">
+    @if (error(); as message) { <p class="mb-3 rounded-xl bg-red-50 p-3 text-sm font-medium text-red-700">{{ message }}</p> }
+    @if (cloudLoading) { <p class="mb-3 text-sm text-gray-500">Cargando rutinas cloud…</p> }
     @if (!loading && routines.length) {
-      @for (routine of routines; track routine.id) {
+      @for (item of routines; track routineKey(item)) {
         <div class="bg-white rounded-2xl shadow-md border border-gray-100 mb-3 px-4 py-4 flex items-center justify-between">
-          <div>
-            <div class="text-lg font-bold text-gray-900 mb-1">{{ routine.name }}</div>
-            <div class="text-gray-500 text-sm font-medium">{{ routine.exercises.length }} {{ t.t('routines.exercises') }}</div>
+          <div><div class="flex items-center gap-2"><div class="text-lg font-bold text-gray-900 mb-1">{{ item.routine.name }}</div><span class="rounded-full px-2 py-0.5 text-xs font-bold" [class.bg-gray-100]="item.source === 'local'" [class.text-gray-700]="item.source === 'local'" [class.bg-sky-100]="item.source === 'cloud'" [class.text-sky-700]="item.source === 'cloud'">{{ item.source === 'local' ? 'Local' : 'Cloud' }}</span></div>
+            @if (item.source === 'local') { <div class="text-gray-500 text-sm font-medium">{{ item.routine.exercises.length }} {{ t.t('routines.exercises') }}</div> } @else { <div class="text-gray-500 text-sm font-medium">{{ item.routine.description || 'Rutina respaldada en tu cuenta' }}</div> }
           </div>
-          <div class="flex gap-2">
-            <button (click)="startEdit(routine)" class="text-orange-600 text-sm font-bold px-3 py-1.5 rounded-lg bg-orange-50 hover:bg-orange-100 transition">{{ t.t('routines.edit') }}</button>
-            <button (click)="deleteRoutine(routine)" class="text-red-600 text-sm font-bold px-3 py-1.5 rounded-lg bg-red-50 hover:bg-red-100 transition">{{ t.t('routines.delete') }}</button>
-          </div>
+          <div class="flex gap-2"><button (click)="startEdit(item)" [disabled]="saving()" class="text-orange-600 text-sm font-bold px-3 py-1.5 rounded-lg bg-orange-50 disabled:opacity-50">{{ t.t('routines.edit') }}</button><button (click)="deleteRoutine(item)" [disabled]="saving()" class="text-red-600 text-sm font-bold px-3 py-1.5 rounded-lg bg-red-50 disabled:opacity-50">{{ t.t('routines.delete') }}</button></div>
         </div>
       }
-    } @else {
-      <div class="text-center text-gray-400 mt-10 font-medium">{{ t.t('routines.noRoutines') }}</div>
-    }
+      @if (auth.isAuthenticated() && cloudTotalPages > 1) { <div class="mb-4 flex justify-between gap-3"><button (click)="previousCloudPage()" [disabled]="cloudPageNumber === 0" class="rounded-lg border px-3 py-2 text-sm font-bold disabled:opacity-40">Anterior</button><span class="py-2 text-sm text-gray-500">Página {{ cloudPageNumber + 1 }} de {{ cloudTotalPages }}</span><button (click)="nextCloudPage()" [disabled]="cloudPageNumber + 1 >= cloudTotalPages" class="rounded-lg border px-3 py-2 text-sm font-bold disabled:opacity-40">Siguiente</button></div> }
+    } @else if (!loading) { <div class="text-center text-gray-400 mt-10 font-medium">{{ t.t('routines.noRoutines') }}</div> }
 
-    <!-- Create/Edit form -->
     <div class="bg-white rounded-2xl shadow-md border border-gray-100 mt-6 px-4 py-5">
-      <h2 class="text-lg font-bold mb-3 text-gray-900">{{ editingRoutine ? t.t('routines.editRoutine') : t.t('routines.createRoutine') }}</h2>
-      <form (ngSubmit)="saveRoutine()" autocomplete="off">
-        <input
-          type="text"
-          [(ngModel)]="newRoutineName"
-          name="routineName"
-          placeholder="{{ t.t('routines.routineName') }}"
-          class="w-full mb-3 px-4 py-3 border-2 border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500 font-medium"
-          required
-        />
-        <div class="mb-3">
-          @if (exercises.length) {
-            <div class="space-y-3">
-              @for (exercise of exercises; track exercise.id; let i = $index) {
-                <div class="bg-gray-50 rounded-xl p-3 border border-gray-200">
-                  <div class="flex items-center gap-2 mb-2">
-                    <input
-                      type="text"
-                      [(ngModel)]="exercise.name"
-                      (ngModelChange)="updateName(i, $event)"
-                      name="exerciseName{{i}}"
-                      class="flex-1 min-w-0 px-3 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 font-medium"
-                      autocomplete="off"
-                      placeholder="{{ t.t('routines.exerciseName') }}"
-                    />
-                    <div class="flex items-center gap-1">
-                      <input
-                        type="number"
-                        [(ngModel)]="exercise.setsCount"
-                        (ngModelChange)="updateSets(i, $event)"
-                        name="exerciseSets{{i}}"
-                        min="1"
-                        max="10"
-                        class="w-14 px-2 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-center font-bold"
-                        placeholder="3"
-                      />
-                      <span class="text-xs text-gray-500 font-medium">sets</span>
-                    </div>
-                  </div>
-                  <button type="button" (click)="removeExercise(i)" class="w-full py-2 flex items-center justify-center gap-2 rounded-lg bg-red-50 text-red-600 text-sm font-bold hover:bg-red-100 active:scale-95 transition-all" [attr.aria-label]="t.t('routines.delete')">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
-                    {{ t.t('routines.delete') }}
-                  </button>
-                </div>
-              }
-            </div>
+      <h2 class="text-lg font-bold mb-3 text-gray-900">{{ editingLocal || editingCloud ? t.t('routines.editRoutine') : t.t('routines.createRoutine') }} <span class="text-sm font-medium text-gray-500">· {{ isCloudEditor ? 'Cloud' : 'Local' }}</span></h2>
+      @if (isCloudEditor) {
+        <form (ngSubmit)="saveRoutine()" autocomplete="off">
+          <input [(ngModel)]="cloudDraft.name" name="cloudName" maxlength="150" required placeholder="{{ t.t('routines.routineName') }}" class="w-full mb-3 px-4 py-3 border-2 border-gray-300 rounded-xl" />
+          <textarea [(ngModel)]="cloudDraft.description" name="cloudDescription" maxlength="500" rows="2" placeholder="Descripción (opcional)" class="w-full mb-3 px-4 py-3 border-2 border-gray-300 rounded-xl"></textarea>
+          @for (exercise of cloudDraft.exercises; track exercise.exerciseId + $index; let i = $index) {
+            <div class="mb-3 rounded-xl border border-gray-200 bg-gray-50 p-3"><div class="mb-2 font-bold text-gray-900">{{ i + 1 }}. {{ exercise.exerciseName }} <span class="text-xs font-medium text-gray-500">{{ exercise.exerciseSource === 'USER' ? 'Personalizado' : 'Global' }}</span></div><div class="grid grid-cols-3 gap-2"><label class="text-xs font-bold text-gray-600">Series<input [(ngModel)]="exercise.sets" name="cloudSets{{i}}" type="number" min="1" required class="mt-1 w-full rounded-lg border p-2" /></label><label class="text-xs font-bold text-gray-600">Reps<input [(ngModel)]="exercise.targetReps" name="cloudReps{{i}}" type="number" min="1" required class="mt-1 w-full rounded-lg border p-2" /></label><label class="text-xs font-bold text-gray-600">Descanso (s)<input [(ngModel)]="exercise.restSeconds" name="cloudRest{{i}}" type="number" min="0" required class="mt-1 w-full rounded-lg border p-2" /></label></div><textarea [(ngModel)]="exercise.notes" name="cloudNotes{{i}}" maxlength="500" rows="2" placeholder="Notas (opcional)" class="mt-2 w-full rounded-lg border p-2 text-sm"></textarea><button type="button" (click)="removeCloudExercise(i)" class="mt-2 text-sm font-bold text-red-600">{{ t.t('routines.delete') }}</button></div>
           }
-          <button type="button" (click)="addExerciseBlock()" class="mt-3 w-full bg-orange-600 hover:bg-orange-700 text-white rounded-xl px-3 py-3 font-bold shadow-md active:scale-95 transition-all">{{ t.t('routines.addExercise') }}</button>
-        </div>
-        <div class="flex gap-3 mt-4">
-          <button type="submit" class="flex-1 bg-green-600 hover:bg-green-700 text-white rounded-xl px-4 py-3 font-bold shadow-md active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed" [disabled]="!newRoutineName.trim() || !exercises.length">{{ editingRoutine ? t.t('routines.save') : t.t('routines.create') }}</button>
-          <button type="button" (click)="cancelEdit()" class="flex-1 bg-white border-2 border-gray-300 text-gray-800 rounded-xl px-4 py-3 font-bold shadow-md active:scale-95 transition-transform">{{ t.t('routines.cancel') }}</button>
-        </div>
-      </form>
+          <button type="button" (click)="openSelector()" class="mt-1 w-full rounded-xl bg-orange-600 px-3 py-3 font-bold text-white">Seleccionar ejercicio del catálogo</button>
+          <div class="flex gap-3 mt-4"><button type="submit" [disabled]="saving() || !cloudDraft.name.trim()" class="flex-1 rounded-xl bg-green-600 px-4 py-3 font-bold text-white disabled:opacity-50">{{ t.t('routines.save') }}</button><button type="button" (click)="cancelEdit()" class="flex-1 rounded-xl border-2 border-gray-300 px-4 py-3 font-bold">{{ t.t('routines.cancel') }}</button></div>
+        </form>
+      } @else {
+        <form (ngSubmit)="saveRoutine()" autocomplete="off"><input [(ngModel)]="localName" name="routineName" placeholder="{{ t.t('routines.routineName') }}" required class="w-full mb-3 px-4 py-3 border-2 border-gray-300 rounded-xl" />
+          @for (exercise of localExercises; track exercise.id; let i = $index) { <div class="mb-3 rounded-xl border border-gray-200 bg-gray-50 p-3"><div class="flex gap-2"><input [(ngModel)]="exercise.name" name="exerciseName{{i}}" placeholder="{{ t.t('routines.exerciseName') }}" class="flex-1 min-w-0 rounded-lg border-2 border-gray-300 px-3 py-2" /><input [(ngModel)]="exercise.setsCount" name="exerciseSets{{i}}" type="number" min="1" max="10" class="w-16 rounded-lg border-2 border-gray-300 px-2 py-2" /></div><button type="button" (click)="removeLocalExercise(i)" class="mt-2 text-sm font-bold text-red-600">{{ t.t('routines.delete') }}</button></div> }
+          <button type="button" (click)="addLocalExerciseBlock()" class="mt-1 w-full rounded-xl bg-orange-600 px-3 py-3 font-bold text-white">{{ t.t('routines.addExercise') }}</button><div class="flex gap-3 mt-4"><button type="submit" [disabled]="!localName.trim() || !localExercises.length" class="flex-1 rounded-xl bg-green-600 px-4 py-3 font-bold text-white disabled:opacity-50">{{ t.t('routines.save') }}</button><button type="button" (click)="cancelEdit()" class="flex-1 rounded-xl border-2 border-gray-300 px-4 py-3 font-bold">{{ t.t('routines.cancel') }}</button></div>
+        </form>
+      }
     </div>
   </div>
 </div>
+@if (selectorOpen) { <div class="fixed inset-0 z-50 overflow-y-auto bg-black/40 p-4"><div class="mx-auto mt-8 max-w-lg rounded-2xl bg-white p-4 shadow-xl"><div class="mb-3 flex justify-between gap-3"><h2 class="text-lg font-bold">Elegir ejercicio cloud</h2><button (click)="closeSelector()" class="font-bold text-gray-600">Cerrar</button></div><form (ngSubmit)="searchSelector()" class="mb-3 flex gap-2"><input [(ngModel)]="selectorSearch" name="selectorSearch" placeholder="Buscar" class="min-w-0 flex-1 rounded-lg border p-2" /><button class="rounded-lg bg-orange-600 px-3 py-2 font-bold text-white">Buscar</button></form>@if (selectorError(); as message) { <p class="rounded-lg bg-red-50 p-2 text-sm text-red-700">{{ message }}</p> } @if (selectorLoading) { <p class="text-sm text-gray-500">Cargando catálogo…</p> } @for (exercise of selectorPage()?.content ?? []; track exercise.id) { <button type="button" (click)="selectCloudExercise(exercise)" class="mb-2 w-full rounded-lg border p-3 text-left hover:bg-orange-50"><span class="font-bold">{{ exerciseName(exercise) }}</span><span class="ml-2 text-xs text-gray-500">{{ exercise.source === 'USER' ? 'Personalizado' : 'Global' }}</span></button> } @if (selectorPage(); as page) { <div class="mt-3 flex justify-between"><button (click)="previousSelectorPage()" [disabled]="selectorPageNumber === 0" class="rounded border px-2 py-1 disabled:opacity-40">Anterior</button><span class="text-sm text-gray-500">{{ page.page + 1 }}/{{ page.totalPages }}</span><button (click)="nextSelectorPage()" [disabled]="selectorPageNumber + 1 >= page.totalPages" class="rounded border px-2 py-1 disabled:opacity-40">Siguiente</button></div> }</div></div> }

@@ -22,9 +22,20 @@
 - `editable` and `deletable` are the only UI action permissions; no source/name heuristic enables them.
 - Guests do not call the protected catalog and keep all local exercise/routine/workout functionality. Authenticated catalog operations are cloud-backed, but local routines and history are deliberately untouched.
 
-## Deferred to Phase 3
+## Phase 3 — cloud routines (implemented)
 
-- Safe migration of existing IndexedDB data.
-- Routine integration with server exercise UUIDs, after an explicit migration/selection design.
-- Server persistence and conflict handling for workouts, sets, weight and statistics.
-- Resource synchronization state, offline queueing and data source-of-truth changes.
+- `RoutineApiService` implements only the documented authenticated routine endpoints: Spring Page listing, detail, POST, full-replacement PUT and DELETE. Its DTOs in `src/app/routines/routine-api.models.ts` remain separate from the Dexie `Routine` shape.
+- The routine screen always reads legacy Dexie routines and, for an authenticated session, additionally reads the current cloud page. Each card is labelled `Local` or `Cloud`; a failed/cold backend request leaves the local cards available and reports that cloud data is temporarily unavailable.
+- Guest create/edit/delete remains Dexie-only with the existing free-text exercise name and `setsCount` model. Authenticated new routines are cloud routines, require catalog-selected server exercise UUIDs, and send backend fields `sets`, `targetReps`, `restSeconds` and optional `notes`/`description`.
+- The cloud exercise picker delegates to `ExerciseApiService`, uses server-side search and pages of 10. It displays the localized catalog name plus global/custom source, but uses only the server UUID as the submitted identity.
+- Cloud routine positions are rebuilt explicitly from the editor array as contiguous 0-based values on every POST/PUT. This avoids stale or duplicate positions after removal; no exercise is matched by name.
+- A cloud draft gets one `crypto.randomUUID()` `clientId`. A failed POST retains that draft and therefore reuses the same ID on retry. A successful save resets the editor, so the next new draft receives a new ID. PUT sends the contract's replacement DTO but the backend retains its original `clientId`.
+- No local routine is migrated, uploaded, hidden or retyped as cloud. Existing selected-routine records lacking the new optional local marker continue to mean local. No Dexie local ID is ever used in a routine API URL.
+- The local routine model has no backend equivalents for free-text exercise identity and only stores `setsCount`; cloud routines additionally require an exercise UUID, target reps, rest seconds and notes. These incompatible fields are intentionally not transformed between stores.
+- Existing local routines can still start the existing local training flow unchanged. Cloud routines are deliberately not shown in routine selection/start-training yet: active training and history still require the local free-text/Dexie shape. Cloud workout integration is not a safe partial mapping in this phase.
+
+## Remaining work
+
+- Explicit, user-controlled legacy local routine migration with no name guessing.
+- Cloud workout lifecycle, set entry/history/statistics, and a design for selecting/starting cloud routines.
+- Offline queueing/conflict resolution only if product requirements justify it; no generic sync infrastructure is present.

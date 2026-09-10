@@ -18,6 +18,8 @@ export interface Routine {
 interface SelectedRoutine {
   id: string; // always 'selected'
   routineId: string;
+  /** Missing in pre-Phase-3 records means local; cloud routines are not selectable for local training yet. */
+  source?: 'local';
 }
 
 class GymTrackerDB extends Dexie {
@@ -47,6 +49,9 @@ class GymTrackerDB extends Dexie {
   }
 }
 
+/** Explicit name for consumers that need to distinguish the Dexie model from API DTOs. */
+export type LocalRoutine = Routine;
+
 export const db = new GymTrackerDB();
 
 /**
@@ -75,7 +80,7 @@ function triggerBackupAsync() {
 
 export const SelectedRoutineRepository = {
   async set(routineId: string) {
-    await db.selectedRoutine.put({ id: 'selected', routineId });
+    await db.selectedRoutine.put({ id: 'selected', routineId, source: 'local' });
   },
   async get() {
     return db.selectedRoutine.get('selected');
