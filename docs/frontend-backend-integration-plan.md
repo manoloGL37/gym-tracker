@@ -44,10 +44,22 @@
 - Backend `LocalDateTime` is serialized by `toBackendLocalDateTime`: a local wall-clock ISO value with no offset or `Z`. The app does not apply a UTC convention the backend does not declare.
 - Calendar keeps Dexie local history and independently fetches one paginated cloud history page. Items have an explicit `Local`/`Cloud` label and source query parameter for detail navigation. A failed cloud request cannot hide/delete local history. Cloud details use backend saved fields, including RPE and snapshot exercise notes, and intentionally do not expose edit/delete actions.
 - Workout-level cloud notes can be saved when non-empty through the documented PATCH. The API cannot clear notes. Existing local per-exercise observations retain their local behavior; cloud has no corresponding user-observation field, so the screen shows snapshot routine-exercise notes and does not pretend observations are cloud-backed.
-- No historic local workout was uploaded, auto-matched by exercise name, or deleted. Local statistics remain local-only; cloud statistics UI integration is deferred.
+- No historic local workout was uploaded, auto-matched by exercise name, or deleted.
+
+## Phase 5 — cloud statistics (implemented)
+
+- `StatisticsApiService` implements only the authenticated backend routes `GET /api/statistics/summary`, `comparison`, `evolution` and `exercises/{exerciseId}`. Its strict DTOs live in `src/app/statistics/statistics-api.models.ts`; they include every documented non-null aggregate, evolution point and required query parameter. The API has no duration or body-weight statistic, so neither is invented in the cloud model.
+- The statistics screen keeps the existing Dexie calculation untouched for Local: completed local history is filtered by its existing `finishedAt` week/month range, with local volume and zero-filled daily bars. Legacy exercise history remains its own local, free-text/name grouping; its sessions, set counts, max weight and estimated 1RM are not cloud aggregates.
+- Authenticated users open Cloud statistics by default. It obtains `comparison` for current/previous totals and `evolution` for the existing daily chart. Backend aggregates, including workout/sets/reps/volume/max weight, are authoritative; the screen only zero-fills missing evolution dates for presentation. A successful zero response is an empty state, never an error.
+- Local and Cloud are explicitly selectable and labelled. They are separate views, never summed: Cloud excludes legacy Dexie history and Local excludes backend workouts. A cloud failure renders retry and Local access without deleting or hiding Dexie data. Login selects Cloud; logout or interceptor-driven 401 returns to Local without clearing Dexie.
+- Statistics dates are sent exactly as local calendar `YYYY-MM-DD` values. The API interval is inclusive (`from` through `to`) and based on backend local date/time semantics, so the client does not convert them to UTC or append an offset. Week means Monday–Sunday and month means its calendar bounds, matching the pre-existing UI selector.
+- Per-exercise cloud statistics accept only the server exercise UUID in the URL. They never map a localized catalog name or a legacy local free-text exercise name. The backend can validly return zero-valued aggregates and `evolution: []` for an unknown/no-data UUID; this is represented as success. The existing exercise-history screen intentionally stays Local until a product decision adds a distinct cloud exercise browser.
+- Body weight remains Dexie-only. There is no server persistence/statistics endpoint in the contract, and logout/401 do not remove body-weight entries.
+- Completing a cloud workout continues to call the Phase 4 documented completion PATCH. Statistics are re-fetched from the backend when the cloud statistics screen loads or its period/source is selected; no frontend cloud aggregate is mutated optimistically.
 
 ## Remaining work
 
 - Explicit, user-controlled legacy local routine migration with no name guessing.
-- Phase 5: cloud statistics UI using the statistics endpoints, plus a deliberate UX/product decision for user-controlled historical migration.
+- A user-controlled, identity-safe migration/resolution flow for legacy local workout history and free-text exercise names. Until then, Local and Cloud statistics must remain separate.
+- A distinct cloud exercise-statistics browsing UX if product needs it; it must select catalog UUIDs and cannot reuse the legacy name-grouped history view.
 - Offline queueing/conflict resolution only if product requirements justify it; no generic sync infrastructure is present.

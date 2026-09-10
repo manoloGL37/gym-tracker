@@ -1,11 +1,16 @@
-import { Component, OnInit, inject, signal } from '@angular/core';
+import { Component, OnInit, effect, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
+import { firstValueFrom } from 'rxjs';
 import { WorkoutHistoryRepository } from '../../data/active-training.repository';
 import { WorkoutHistory } from '../../data/workout-history.model';
 import { TranslationService } from '../../services/translation.service';
+import { AuthSessionService } from '../../auth/auth-session.service';
+import { StatisticsApiService } from '../../statistics/statistics-api.service';
+import { StatisticsEvolutionPoint, StatisticsSummaryResponse } from '../../statistics/statistics-api.models';
 
 type Period = 'week' | 'month';
+type StatisticsSource = 'local' | 'cloud';
 
 interface PeriodStats {
   workoutCount: number;
@@ -22,19 +27,48 @@ interface PeriodStats {
 })
 export class StatsComponent implements OnInit {
   t = inject(TranslationService);
+  readonly auth = inject(AuthSessionService);
+  private readonly statisticsApi = inject(StatisticsApiService);
   
   selectedPeriod = signal<Period>('week');
   currentStats = signal<PeriodStats>({ workoutCount: 0, totalVolume: 0, dailyDistribution: [] });
   previousStats = signal<PeriodStats>({ workoutCount: 0, totalVolume: 0, dailyDistribution: [] });
   loading = signal(true);
+  source = signal<StatisticsSource>('local');
+  error = signal<string | null>(null);
+  private initialized = signal(false);
+  private loadVersion = 0;
+
+  constructor() {
+    effect(() => {
+      const nextSource: StatisticsSource = this.auth.isAuthenticated() ? 'cloud' : 'local';
+      if (!this.initialized()) return;
+      this.source.set(nextSource);
+      void this.loadStats();
+    });
+  }
 
   async ngOnInit() {
+    this.source.set(this.auth.isAuthenticated() ? 'cloud' : 'local');
+    this.initialized.set(true);
     await this.loadStats();
   }
 
   async loadStats() {
+    const requestVersion = ++this.loadVersion;
     this.loading.set(true);
+    this.error.set(null);
+    if (this.source() === 'cloud' && this.auth.isAuthenticated()) {
+      await this.loadCloudStats(requestVersion);
+      return;
+    }
+
+    await this.loadLocalStats(requestVersion);
+  }
+
+  private async loadLocalStats(requestVersion: number): Promise<void> {
     const workouts = await WorkoutHistoryRepository.getAll();
+    if (requestVersion !== this.loadVersion) return;
     const period = this.selectedPeriod();
     
     const { start: currentStart, end: currentEnd } = this.getPeriodRange(period, 0);
@@ -43,6 +77,46 @@ export class StatsComponent implements OnInit {
     this.currentStats.set(this.calculateStats(workouts, currentStart, currentEnd));
     this.previousStats.set(this.calculateStats(workouts, previousStart, previousEnd));
     this.loading.set(false);
+  }
+
+  private async loadCloudStats(requestVersion: number): Promise<void> {
+    const period = this.selectedPeriod();
+    const current = this.getPeriodRange(period, 0);
+    const previous = this.getPeriodRange(period, -1);
+    const currentRange = { from: toCalendarDate(current.start), to: toCalendarDate(current.end) };
+
+    try {
+      const [comparison, evolution] = await Promise.all([
+        firstValueFrom(this.statisticsApi.comparison({
+          currentFrom: currentRange.from,
+          currentTo: currentRange.to,
+          previousFrom: toCalendarDate(previous.start),
+          previousTo: toCalendarDate(previous.end),
+        })),
+        firstValueFrom(this.statisticsApi.evolution(currentRange)),
+      ]);
+      if (requestVersion !== this.loadVersion || this.source() !== 'cloud') return;
+      this.currentStats.set(this.cloudPeriodStats(comparison.current, evolution.data));
+      this.previousStats.set(this.cloudPeriodStats(comparison.previous, []));
+    } catch {
+      if (requestVersion !== this.loadVersion || this.source() !== 'cloud') return;
+      // Zero aggregates are a successful cloud response. Only a failed request reaches here.
+      this.currentStats.set({ workoutCount: 0, totalVolume: 0, dailyDistribution: [] });
+      this.previousStats.set({ workoutCount: 0, totalVolume: 0, dailyDistribution: [] });
+      this.error.set('No se pudieron cargar las estadísticas cloud. Tus estadísticas locales siguen disponibles.');
+    } finally {
+      if (requestVersion === this.loadVersion) this.loading.set(false);
+    }
+  }
+
+  private cloudPeriodStats(summary: StatisticsSummaryResponse, evolution: StatisticsEvolutionPoint[]): PeriodStats {
+    const days = new Map(evolution.map(point => [point.date, point]));
+    const dailyDistribution: PeriodStats['dailyDistribution'] = [];
+    for (const date of calendarDates(summary.from, summary.to)) {
+      const point = days.get(toCalendarDate(date));
+      dailyDistribution.push({ date, count: point?.workouts ?? 0, volume: point?.volume ?? 0 });
+    }
+    return { workoutCount: summary.workouts, totalVolume: summary.volume, dailyDistribution };
   }
 
   getPeriodRange(period: Period, offset: number): { start: Date; end: Date } {
@@ -125,6 +199,12 @@ export class StatsComponent implements OnInit {
     await this.loadStats();
   }
 
+  async setSource(source: StatisticsSource): Promise<void> {
+    if (source === 'cloud' && !this.auth.isAuthenticated()) return;
+    this.source.set(source);
+    await this.loadStats();
+  }
+
   getTrend(current: number, previous: number): 'up' | 'down' | 'equal' | 'none' {
     if (previous === 0) return 'none';
     if (current > previous) return 'up';
@@ -142,4 +222,25 @@ export class StatsComponent implements OnInit {
     const fmt = (d: Date) => d.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' });
     return `${fmt(start)} – ${fmt(end)}`;
   }
+}
+
+/** Formats a calendar date without converting its local day to UTC. */
+function toCalendarDate(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function calendarDates(from: string, to: string): Date[] {
+  const [fromYear, fromMonth, fromDay] = from.split('-').map(Number);
+  const [toYear, toMonth, toDay] = to.split('-').map(Number);
+  const cursor = new Date(fromYear, fromMonth - 1, fromDay);
+  const end = new Date(toYear, toMonth - 1, toDay);
+  const dates: Date[] = [];
+  while (cursor <= end) {
+    dates.push(new Date(cursor));
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return dates;
 }
