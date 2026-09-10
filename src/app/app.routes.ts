@@ -15,6 +15,8 @@ import { Routes } from '@angular/router';
 import { SelectRoutineComponent } from './pages/select-routine/select-routine.component';
 
 export const routes: Routes = [
+  { path: 'login', loadComponent: () => import('./pages/auth/login.component').then(m => m.LoginComponent), title: 'Login' },
+  { path: 'register', loadComponent: () => import('./pages/auth/register.component').then(m => m.RegisterComponent), title: 'Create account' },
   {
     path: '',
     component: MainLayoutComponent,

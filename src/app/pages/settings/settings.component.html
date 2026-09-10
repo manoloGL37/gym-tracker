@@ -10,6 +10,27 @@
   </div>
 
   <div class="px-4 pt-6 space-y-6">
+    <!-- Account: authentication never changes the existing local repositories in Phase 1. -->
+    <div class="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
+      <label class="block text-sm font-bold uppercase tracking-wide text-gray-700 mb-3">Cuenta</label>
+      @if (auth.isAuthenticated()) {
+        <p class="font-semibold text-gray-900">{{ auth.currentUser()?.email }}</p>
+        <p class="text-xs text-gray-500 mt-1">Cuenta conectada. Los entrenamientos existentes siguen siendo locales hasta la próxima fase.</p>
+        <button (click)="logout()" class="w-full mt-3 px-4 py-3 rounded-lg font-semibold text-sm bg-gray-800 text-white shadow hover:bg-gray-900 transition-all">Cerrar sesión</button>
+      } @else if (auth.isInitializing()) {
+        <p class="text-sm text-gray-600">Comprobando la sesión…</p>
+      } @else if (auth.initializationStatus() === 'unavailable' && auth.hasStoredToken()) {
+        <p class="text-sm text-gray-600">No se pudo verificar la sesión. Tus datos locales siguen disponibles.</p>
+        <button (click)="retryAuthInitialization()" class="w-full mt-3 px-4 py-3 rounded-lg font-semibold text-sm bg-orange-600 text-white shadow hover:bg-orange-700 transition-all">Reintentar conexión</button>
+      } @else {
+        <p class="text-sm text-gray-600">Modo local: puedes usar la aplicación sin cuenta.</p>
+        <div class="flex gap-2 mt-3">
+          <a routerLink="/login" class="flex-1 text-center px-4 py-3 rounded-lg font-semibold text-sm bg-orange-600 text-white shadow hover:bg-orange-700 transition-all">Iniciar sesión</a>
+          <a routerLink="/register" class="flex-1 text-center px-4 py-3 rounded-lg font-semibold text-sm bg-gray-100 text-gray-800 border border-gray-300 shadow hover:bg-gray-200 transition-all">Crear cuenta</a>
+        </div>
+      }
+    </div>
+
     <!-- Language -->
     <div class="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
       <label class="block text-sm font-bold uppercase tracking-wide text-gray-700 mb-3">{{ t.t('settings.language') }}</label>

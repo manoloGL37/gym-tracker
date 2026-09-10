@@ -2,7 +2,8 @@ import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { TranslationService, Lang } from '../../services/translation.service';
 import { CommonModule } from '@angular/common';
 import { BackupService } from '../../services/backup.service';
-import { Router } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
+import { AuthSessionService } from '../../auth/auth-session.service';
 
 interface StorageInfo {
   usage: number | null;
@@ -22,7 +23,7 @@ interface ImportPreview {
 @Component({
   selector: 'app-settings',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, RouterLink],
   templateUrl: './settings.component.html',
   styleUrls: ['./settings.component.css']
 })
@@ -31,6 +32,7 @@ export class SettingsComponent implements OnInit {
   lang = computed(() => this.t.lang());
   backupService = inject(BackupService);
   router = inject(Router);
+  auth = inject(AuthSessionService);
 
   // Read backup status directly from localStorage
   lastBackupTime = computed(() => {
@@ -98,6 +100,14 @@ export class SettingsComponent implements OnInit {
 
   setLang(lang: Lang) {
     this.t.setLang(lang);
+  }
+
+  async retryAuthInitialization(): Promise<void> {
+    await this.auth.retryInitialization();
+  }
+
+  logout(): void {
+    this.auth.logout();
   }
 
   async refreshStorageInfo() {
