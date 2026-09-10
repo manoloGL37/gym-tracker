@@ -3,6 +3,7 @@ import Dexie, { Table } from 'dexie';
 import { ActiveTraining } from '../pages/training/training.model';
 import { WorkoutHistory } from './workout-history.model';
 import { BodyWeightEntry } from './body-weight.model';
+import { CloudActiveTraining } from '../workouts/workout-domain';
 
 export interface Routine {
   id: string;
@@ -15,15 +16,27 @@ export interface Routine {
 }
 
 
-interface SelectedRoutine {
+export type SelectedRoutine = LocalSelectedRoutine | CloudSelectedRoutine;
+
+export interface LocalSelectedRoutine {
   id: string; // always 'selected'
   routineId: string;
-  /** Missing in pre-Phase-3 records means local; cloud routines are not selectable for local training yet. */
+  /** Missing in pre-Phase-3 records is also interpreted as local. */
   source?: 'local';
+}
+
+export interface CloudSelectedRoutine {
+  id: string; // always 'selected'
+  source: 'cloud';
+  routineId: string;
+  routineName: string;
+  /** Generated once at selection time so an ambiguous POST retry stays idempotent. */
+  workoutClientId: string;
 }
 
 class GymTrackerDB extends Dexie {
   activeTraining!: Table<ActiveTraining, string>;
+  cloudActiveTraining!: Table<CloudActiveTraining, string>;
   workoutHistory!: Table<WorkoutHistory, string>;
   routines!: Table<Routine, string>;
   selectedRoutine!: Table<SelectedRoutine, string>;
@@ -46,6 +59,7 @@ class GymTrackerDB extends Dexie {
       selectedRoutine: 'id',
     });
     this.version(5).stores(stores);
+    this.version(6).stores({ ...stores, cloudActiveTraining: 'id' });
   }
 }
 
@@ -85,6 +99,9 @@ export const SelectedRoutineRepository = {
   async get() {
     return db.selectedRoutine.get('selected');
   },
+  async setCloud(routineId: string, routineName: string, workoutClientId: string) {
+    await db.selectedRoutine.put({ id: 'selected', source: 'cloud', routineId, routineName, workoutClientId });
+  },
   async clear() {
     await db.selectedRoutine.delete('selected');
   },
@@ -120,6 +137,19 @@ export const ActiveTrainingRepository = {
   },
   async clear() {
     await db.activeTraining.delete('active');
+  },
+};
+
+/** Separate cache so a cloud UUID never leaks into the existing local active-training record. */
+export const CloudActiveTrainingRepository = {
+  async get() {
+    return db.cloudActiveTraining.get('active');
+  },
+  async save(training: CloudActiveTraining) {
+    await db.cloudActiveTraining.put(training);
+  },
+  async clear() {
+    await db.cloudActiveTraining.delete('active');
   },
 };
 

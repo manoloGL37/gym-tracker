@@ -1,7 +1,7 @@
 <div class="flex flex-col bg-gray-50" style="min-height: 100dvh;">
   <!-- Routine name -->
   <div class="px-4 pt-4 pb-4 bg-gradient-to-br from-orange-500 to-orange-700 text-white shadow-lg">
-    <h1 class="text-xl font-bold">{{ training?.routineName || '' }}</h1>
+    <h1 class="text-xl font-bold">{{ training?.routineName || cloudTraining?.routineName || '' }}</h1>
       <div class="text-orange-50 text-sm mt-1">{{ t.t('training.activeSession') }}</div>
   </div>
 
@@ -93,6 +93,30 @@
         </div>
       }
     }
+    @if (cloudTraining) {
+      <div class="mb-3 rounded-xl border border-sky-200 bg-sky-50 p-3 text-sm text-sky-800">Entrenamiento cloud: las series confirmadas no se pueden editar ni borrar porque la API actual no ofrece esa operación.</div>
+      @if (cloudError) { <p class="mb-3 rounded-xl bg-red-50 p-3 text-sm text-red-700">{{ cloudError }}</p> }
+      @for (exercise of cloudTraining.exercises; track exercise.id) {
+        <div class="bg-white rounded-2xl shadow-md border border-gray-100 p-4 mb-4">
+          <h2 class="text-lg font-bold text-gray-900">{{ exercise.name }}</h2>
+          @if (exercise.notes) { <p class="mt-1 text-sm text-gray-500 whitespace-pre-line">{{ exercise.notes }}</p> }
+          @for (set of exercise.sets; track set.clientId; let setIndex = $index) {
+            <div class="mt-3 rounded-xl border p-3" [class.bg-gray-50]="!set.persisted" [class.bg-emerald-50]="set.persisted">
+              <div class="mb-2 flex justify-between text-sm font-semibold text-gray-600"><span>Serie {{ set.setNumber }}</span><span>{{ set.persisted ? 'Guardada' : 'Borrador' }}</span></div>
+              <div class="grid grid-cols-3 gap-2">
+                <label class="text-xs font-bold text-gray-600">Reps<input [(ngModel)]="set.reps" (ngModelChange)="onCloudChange()" [disabled]="!!set.persisted" type="number" min="1" class="mt-1 w-full rounded-lg border p-2 disabled:bg-gray-100" /></label>
+                <label class="text-xs font-bold text-gray-600">kg<input [(ngModel)]="set.weight" (ngModelChange)="onCloudChange()" [disabled]="!!set.persisted" type="number" min="0" max="9999.99" step="0.01" class="mt-1 w-full rounded-lg border p-2 disabled:bg-gray-100" /></label>
+                <label class="text-xs font-bold text-gray-600">RPE<input [(ngModel)]="set.rpe" (ngModelChange)="onCloudChange()" [disabled]="!!set.persisted" type="number" min="0" max="10" step="0.1" class="mt-1 w-full rounded-lg border p-2 disabled:bg-gray-100" /></label>
+              </div>
+              @if (!set.persisted) { <button type="button" (click)="saveCloudSet(exercise, setIndex)" [disabled]="set.saving || !isCloudSetComplete(set)" class="mt-3 rounded-lg bg-orange-600 px-3 py-2 text-sm font-bold text-white disabled:opacity-40">{{ set.saving ? 'Guardando…' : 'Guardar serie' }}</button> }
+            </div>
+          }
+          <button type="button" (click)="addCloudSet(exercise)" class="mt-3 rounded-lg border border-orange-300 px-3 py-2 text-sm font-bold text-orange-700">Añadir serie</button>
+        </div>
+      }
+      <div class="mb-8 rounded-2xl bg-white p-4 shadow-md border border-gray-100"><label class="block text-xs font-semibold text-gray-600 mb-2">Notas del entrenamiento (cloud)</label><textarea [(ngModel)]="cloudTraining.notes" (ngModelChange)="onCloudChange()" maxlength="500" rows="3" class="w-full rounded-lg border p-2" placeholder="Notas opcionales"></textarea><button type="button" (click)="saveCloudNotes()" [disabled]="cloudSaving || !cloudTraining.notes?.trim()" class="mt-2 rounded-lg border px-3 py-2 text-sm font-bold disabled:opacity-40">Guardar notas</button><p class="mt-2 text-xs text-gray-500">La API permite sustituir notas no vacías, pero no borrarlas.</p></div>
+    }
+    @if (!training && !cloudTraining && cloudError) { <div class="rounded-xl bg-white p-4 shadow"><p class="mb-3 text-sm text-red-700">{{ cloudError }}</p><button type="button" (click)="retryCloudStart()" [disabled]="cloudSaving" class="rounded-lg bg-orange-600 px-4 py-2 font-bold text-white disabled:opacity-40">Reintentar iniciar entrenamiento cloud</button></div> }
   </div>
 
   <!-- Finish training button -->
@@ -112,7 +136,7 @@
       <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6" (click)="$event.stopPropagation()">
         <h2 class="text-xl font-bold text-gray-900 mb-3">{{ t.t('training.confirmFinish.title') }}</h2>
         <p class="text-gray-600 mb-2">{{ t.t('training.confirmFinish.body') }}</p>
-        @if (hasIncompleteSets()) {
+        @if (hasIncompleteSets() || hasUnsubmittedCloudSets()) {
           <p class="text-orange-600 font-medium text-sm mt-2 mb-4">{{ t.t('training.confirmFinish.incompleteWarning') }}</p>
         }
         <div class="flex gap-3 mt-6">

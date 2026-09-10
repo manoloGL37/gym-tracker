@@ -32,10 +32,22 @@
 - A cloud draft gets one `crypto.randomUUID()` `clientId`. A failed POST retains that draft and therefore reuses the same ID on retry. A successful save resets the editor, so the next new draft receives a new ID. PUT sends the contract's replacement DTO but the backend retains its original `clientId`.
 - No local routine is migrated, uploaded, hidden or retyped as cloud. Existing selected-routine records lacking the new optional local marker continue to mean local. No Dexie local ID is ever used in a routine API URL.
 - The local routine model has no backend equivalents for free-text exercise identity and only stores `setsCount`; cloud routines additionally require an exercise UUID, target reps, rest seconds and notes. These incompatible fields are intentionally not transformed between stores.
-- Existing local routines can still start the existing local training flow unchanged. Cloud routines are deliberately not shown in routine selection/start-training yet: active training and history still require the local free-text/Dexie shape. Cloud workout integration is not a safe partial mapping in this phase.
+- Existing local routines can still start the existing local training flow unchanged. Phase 4 adds cloud selection separately; the local free-text/Dexie model is still never transformed into a cloud resource.
+
+## Phase 4 — cloud workouts (implemented)
+
+- `WorkoutApiService` implements only `GET /api/workouts`, `GET /api/workouts/{id}`, `POST /api/workouts`, `PATCH /api/workouts/{id}` and `POST /api/workouts/{workoutId}/exercises/{workoutExerciseId}/sets`. DTOs in `src/app/workouts/workout-api.models.ts` mirror the contract and remain distinct from Dexie history.
+- Routine selection combines legacy local and authenticated cloud routines with an explicit `source`. Selecting local keeps the old `ActiveTrainingRepository` flow. Selecting cloud stores the routine UUID, routine label and one generated workout `clientId`; the training screen creates the workout from the server routine snapshot. It never reconstructs workout-exercise IDs or identifies exercises by name.
+- Cloud active state uses a separate small Dexie `cloudActiveTraining` cache. It contains the server workout/exercise identities plus editable set drafts for navigation/reload recovery. On an authenticated reload it refreshes the server workout and preserves only drafts the server has not already confirmed. It is not an offline sync queue and backend responses remain authoritative for persisted fields.
+- A set starts as an editable local draft. Its `clientId` is generated once; retrying the same Save reuses it. `setNumber` is allocated deterministically from all existing drafts/sets and is 1-based. After the API confirms the set it becomes read-only because the backend has no edit/delete set endpoint. Weight, reps and optional RPE are sent exactly as documented.
+- Cloud completion calls `PATCH { completed: true }`; the server supplies `completedAt`, preserving `startedAt`. The UI treats only `completedAt === null` as unfinished. It will not complete while a non-empty set draft is unsubmitted. A 401 or network failure leaves the local cloud resume cache and drafts untouched.
+- Backend `LocalDateTime` is serialized by `toBackendLocalDateTime`: a local wall-clock ISO value with no offset or `Z`. The app does not apply a UTC convention the backend does not declare.
+- Calendar keeps Dexie local history and independently fetches one paginated cloud history page. Items have an explicit `Local`/`Cloud` label and source query parameter for detail navigation. A failed cloud request cannot hide/delete local history. Cloud details use backend saved fields, including RPE and snapshot exercise notes, and intentionally do not expose edit/delete actions.
+- Workout-level cloud notes can be saved when non-empty through the documented PATCH. The API cannot clear notes. Existing local per-exercise observations retain their local behavior; cloud has no corresponding user-observation field, so the screen shows snapshot routine-exercise notes and does not pretend observations are cloud-backed.
+- No historic local workout was uploaded, auto-matched by exercise name, or deleted. Local statistics remain local-only; cloud statistics UI integration is deferred.
 
 ## Remaining work
 
 - Explicit, user-controlled legacy local routine migration with no name guessing.
-- Cloud workout lifecycle, set entry/history/statistics, and a design for selecting/starting cloud routines.
+- Phase 5: cloud statistics UI using the statistics endpoints, plus a deliberate UX/product decision for user-controlled historical migration.
 - Offline queueing/conflict resolution only if product requirements justify it; no generic sync infrastructure is present.

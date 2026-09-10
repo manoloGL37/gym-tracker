@@ -6,18 +6,20 @@
   </div>
 
   <div class="flex-1 px-4 pt-4">
+    @if (error) { <p class="mb-3 rounded-xl bg-red-50 p-3 text-sm text-red-700">{{ error }}</p> }
     @if (!loading && routines.length) {
-      @for (routine of routines; track routine.id) {
+      @for (item of routines; track routineKey(item)) {
         <button
-          (click)="selectRoutine(routine)"
+          (click)="selectRoutine(item)"
           class="w-full text-left bg-white rounded-2xl shadow-md border border-gray-100 mb-3 px-4 py-5 active:scale-95 focus:outline-none focus:ring-4 focus:ring-orange-300 transition-transform"
         >
           <div class="flex flex-col">
-            <span class="text-lg font-bold text-gray-900 mb-1">{{ routine.name }}</span>
-            <span class="text-gray-500 text-sm font-medium">{{ routine.exercises.length }} {{ t.t('routines.exercises') }}</span>
+            <span class="text-lg font-bold text-gray-900 mb-1">{{ item.routine.name }} <span class="rounded-full px-2 py-0.5 text-xs" [class.bg-gray-100]="item.source === 'local'" [class.bg-sky-100]="item.source === 'cloud'">{{ item.source === 'local' ? 'Local' : 'Cloud' }}</span></span>
+            <span class="text-gray-500 text-sm font-medium">{{ item.source === 'local' ? item.routine.exercises.length : 'Rutina respaldada' }} {{ item.source === 'local' ? t.t('routines.exercises') : '' }}</span>
           </div>
         </button>
       }
+      @if (auth.isAuthenticated() && cloudTotalPages > 1) { <div class="flex justify-between gap-3"><button (click)="previousCloudPage()" [disabled]="cloudPageNumber === 0" class="rounded-lg border px-3 py-2 text-sm font-bold disabled:opacity-40">Anterior</button><span class="py-2 text-sm text-gray-500">Página {{ cloudPageNumber + 1 }} de {{ cloudTotalPages }}</span><button (click)="nextCloudPage()" [disabled]="cloudPageNumber + 1 >= cloudTotalPages" class="rounded-lg border px-3 py-2 text-sm font-bold disabled:opacity-40">Siguiente</button></div> }
     } @else {
       <div class="text-center text-gray-400 mt-10 font-medium">{{ t.t('selectRoutine.noRoutines') }}</div>
     }

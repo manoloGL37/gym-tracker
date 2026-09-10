@@ -1,8 +1,12 @@
-import { Component, inject } from '@angular/core';
+import { Component, effect, inject } from '@angular/core';
 import { Router } from '@angular/router';
 import { RoutinesRepository, Routine, SelectedRoutineRepository } from '../../data/active-training.repository';
 import { CommonModule } from '@angular/common';
 import { TranslationService } from '../../services/translation.service';
+import { AuthSessionService } from '../../auth/auth-session.service';
+import { RoutineApiService } from '../../routines/routine-api.service';
+import { RoutineListItem } from '../../routines/routine-domain';
+import { firstValueFrom } from 'rxjs';
 
 @Component({
   selector: 'app-select-routine',
@@ -13,20 +17,48 @@ import { TranslationService } from '../../services/translation.service';
 })
 export class SelectRoutineComponent {
   t = inject(TranslationService);
-  routines: Routine[] = [];
+  readonly auth = inject(AuthSessionService);
+  private readonly routineApi = inject(RoutineApiService);
+  routines: RoutineListItem[] = [];
   loading = true;
+  cloudPageNumber = 0;
+  cloudTotalPages = 0;
+  error: string | null = null;
 
   constructor(private router: Router) {
-    this.loadRoutines();
+    effect(() => void this.loadRoutines());
   }
 
-  async loadRoutines() {
-    this.routines = await RoutinesRepository.getAll();
-    this.loading = false;
+  async loadRoutines(page = this.cloudPageNumber) {
+    this.loading = true;
+    const local: RoutineListItem[] = (await RoutinesRepository.getAll()).map(routine => ({ source: 'local', routine }));
+    if (!this.auth.isAuthenticated()) {
+      this.routines = local;
+      this.loading = false;
+      return;
+    }
+    try {
+      const cloud = await firstValueFrom(this.routineApi.list({ page, size: 10 }));
+      this.cloudPageNumber = cloud.number;
+      this.cloudTotalPages = cloud.totalPages;
+      this.routines = [...local, ...cloud.content.map(routine => ({ source: 'cloud' as const, routine }))];
+      this.error = null;
+    } catch {
+      // A cloud failure never hides the guest/legacy choices.
+      this.routines = local;
+      this.error = 'No se pudieron cargar las rutinas cloud. Tus rutinas locales siguen disponibles.';
+    } finally {
+      this.loading = false;
+    }
   }
 
-  async selectRoutine(routine: Routine) {
-    await SelectedRoutineRepository.set(routine.id);
+  async selectRoutine(item: RoutineListItem) {
+    if (item.source === 'local') await SelectedRoutineRepository.set(item.routine.id);
+    else await SelectedRoutineRepository.setCloud(item.routine.id, item.routine.name, crypto.randomUUID());
     this.router.navigate(['/training']);
   }
+
+  routineKey(item: RoutineListItem): string { return `${item.source}:${item.routine.id}`; }
+  async previousCloudPage() { if (this.cloudPageNumber > 0) await this.loadRoutines(this.cloudPageNumber - 1); }
+  async nextCloudPage() { if (this.cloudPageNumber + 1 < this.cloudTotalPages) await this.loadRoutines(this.cloudPageNumber + 1); }
 }

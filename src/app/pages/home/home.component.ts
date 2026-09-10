@@ -2,11 +2,12 @@ import { Component, OnInit, inject, computed, Signal } from '@angular/core';
 import { LowerCasePipe, DatePipe, DecimalPipe } from '@angular/common';
 import { TranslationService } from '../../services/translation.service';
 import { Router, RouterLink } from '@angular/router';
-import { ActiveTrainingRepository, WorkoutHistoryRepository } from '../../data/active-training.repository';
+import { ActiveTrainingRepository, CloudActiveTrainingRepository, WorkoutHistoryRepository } from '../../data/active-training.repository';
 import { WorkoutHistory } from '../../data/workout-history.model';
 import { ActiveTraining } from '../training/training.model';
 import { BodyWeightRepository } from '../../data/body-weight.repository';
 import { BodyWeightEntry } from '../../data/body-weight.model';
+import { CloudActiveTraining } from '../../workouts/workout-domain';
 
 @Component({
   selector: 'app-home',
@@ -18,7 +19,7 @@ import { BodyWeightEntry } from '../../data/body-weight.model';
 export class HomeComponent implements OnInit {
   t = inject(TranslationService);
   lastWorkout: WorkoutHistory | null = null;
-  activeTraining: ActiveTraining | null = null;
+  activeTraining: ActiveTraining | CloudActiveTraining | null = null;
   weekWorkoutCount = 0;
   weekVolume = 0;
   latestWeight: BodyWeightEntry | null = null;
@@ -40,14 +41,15 @@ export class HomeComponent implements OnInit {
   constructor(private router: Router) {}
 
   async ngOnInit() {
-    const [workouts, activeTraining, weightEntries] = await Promise.all([
+    const [workouts, activeTraining, cloudActiveTraining, weightEntries] = await Promise.all([
       WorkoutHistoryRepository.getAll(),
       ActiveTrainingRepository.get().then(training => training ?? null),
+      CloudActiveTrainingRepository.get().then(training => training ?? null),
       BodyWeightRepository.getAll(),
     ]);
 
     this.lastWorkout = workouts[0] ?? null;
-    this.activeTraining = activeTraining;
+    this.activeTraining = activeTraining ?? cloudActiveTraining;
     this.latestWeight = weightEntries[0] ?? null;
     this.weekWorkoutCount = this.getCurrentWeekWorkouts(workouts).length;
     this.weekVolume = this.getCurrentWeekWorkouts(workouts).reduce((sum, workout) => sum + this.calculateWorkoutVolume(workout), 0);
