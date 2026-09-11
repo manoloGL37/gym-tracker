@@ -8,6 +8,7 @@ import { RoutineApiService } from '../../routines/routine-api.service';
 import { RoutineListItem } from '../../routines/routine-domain';
 import { firstValueFrom } from 'rxjs';
 import { LocalToCloudMigrationService } from '../../migration/local-to-cloud-migration.service';
+import { AccountSyncService } from '../../migration/account-sync.service';
 
 @Component({
   selector: 'app-select-routine',
@@ -21,6 +22,7 @@ export class SelectRoutineComponent {
   readonly auth = inject(AuthSessionService);
   private readonly routineApi = inject(RoutineApiService);
   private readonly migration = inject(LocalToCloudMigrationService);
+  private readonly accountSync = inject(AccountSyncService);
   routines: RoutineListItem[] = [];
   loading = true;
   cloudPageNumber = 0;
@@ -28,7 +30,12 @@ export class SelectRoutineComponent {
   error: string | null = null;
 
   constructor(private router: Router) {
-    effect(() => void this.loadRoutines());
+    effect(() => {
+      this.auth.isAuthenticated();
+      this.auth.currentUser?.();
+      this.accountSync.status();
+      void this.loadRoutines();
+    });
   }
 
   async loadRoutines(page = this.cloudPageNumber) {
@@ -38,7 +45,7 @@ export class SelectRoutineComponent {
     const migrated = accountId ? await Promise.all(rawLocal.map(routine => this.migration.isRoutineMigrated(accountId, routine.id))) : rawLocal.map(() => false);
     const local: RoutineListItem[] = rawLocal.filter((_, index) => !migrated[index]).map(routine => ({ source: 'local', routine }));
     if (!this.auth.isAuthenticated()) {
-      this.routines = local;
+      this.routines = rawLocal.map(routine => ({ source: 'local', routine }));
       this.loading = false;
       return;
     }
@@ -51,7 +58,7 @@ export class SelectRoutineComponent {
     } catch {
       // A cloud failure never hides the guest/legacy choices.
       this.routines = local;
-      this.error = 'No se pudieron cargar las rutinas cloud. Tus rutinas locales siguen disponibles.';
+      this.error = 'No se pudieron actualizar todas tus rutinas. Las que ya estaban disponibles siguen aquí.';
     } finally {
       this.loading = false;
     }

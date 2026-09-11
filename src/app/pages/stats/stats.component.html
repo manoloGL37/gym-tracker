@@ -18,23 +18,11 @@
         </button>
       </div>
 
-      <div *ngIf="auth.isAuthenticated()" class="source-switch" role="group" [attr.aria-label]="t.t('stats.sourceLabel')">
-        <button type="button" (click)="setSource('local')" [class.is-active]="source() === 'local'" [attr.aria-pressed]="source() === 'local'">
-          {{ t.t('stats.onDevice') }}
-        </button>
-        <button type="button" (click)="setSource('cloud')" [class.is-active]="source() === 'cloud'" [attr.aria-pressed]="source() === 'cloud'">
-          {{ t.t('stats.inAccount') }}
-        </button>
-      </div>
     </div>
 
     <div class="stats-header__context">
-      <span class="source-badge" [class.source-badge--cloud]="source() === 'cloud'">
-        {{ source() === 'cloud' ? t.t('stats.inAccount') : t.t('stats.onDevice') }}
-      </span>
       <span class="stats-range">{{ getPeriodLabel() }}</span>
     </div>
-    <p *ngIf="source() === 'cloud'" class="source-note">{{ t.t('stats.cloudSeparate') }}</p>
   </header>
 
   <div class="stats-content">
@@ -45,9 +33,6 @@
       </div>
       <div class="status-actions">
         <button type="button" class="primary-button" (click)="loadStats()">{{ t.t('stats.retry') }}</button>
-        <button *ngIf="auth.isAuthenticated() && source() === 'cloud'" type="button" class="secondary-button" (click)="setSource('local')">
-          {{ t.t('stats.viewLocal') }}
-        </button>
       </div>
     </section>
 
@@ -172,7 +157,6 @@
             <h2>{{ t.t('stats.exerciseProgression') }}</h2>
             <p>{{ t.t('stats.exerciseProgressionHelp') }}</p>
           </div>
-          <span class="source-badge source-badge--cloud">{{ t.t('stats.inAccount') }}</span>
         </div>
 
         <form class="exercise-search" (ngSubmit)="searchExercises()">
@@ -212,7 +196,7 @@
             <div class="exercise-result-panel__title">
               <div>
                 <span>{{ t.t('stats.selectedExercise') }}</span>
-                <h3>{{ selectedExercise() ? exerciseName(selectedExercise()!) : selectedStats.exerciseId }}</h3>
+                <h3>{{ selectedExercise() ? exerciseName(selectedExercise()!) : 'Ejercicio seleccionado' }}</h3>
               </div>
             </div>
             <div class="exercise-metrics">

@@ -63,7 +63,7 @@ export function cloudDraftFromResponse(response: RoutineResponse, names: Map<str
 function cloudExerciseFromResponse(exercise: RoutineExerciseResponse, names: Map<string, string>): CloudRoutineExerciseDraft {
   return {
     exerciseId: exercise.exerciseId,
-    exerciseName: names.get(exercise.exerciseId) ?? exercise.exerciseId,
+    exerciseName: names.get(exercise.exerciseId) ?? 'Ejercicio sin nombre',
     exerciseSource: 'EXERCISES_DATASET',
     sets: exercise.sets,
     targetReps: exercise.targetReps,

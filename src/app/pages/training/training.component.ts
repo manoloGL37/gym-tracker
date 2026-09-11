@@ -257,8 +257,8 @@ export class TrainingComponent implements OnInit, OnDestroy {
 }
 
 function cloudErrorMessage(error: unknown): string {
-  if (error instanceof HttpErrorResponse && error.status === 401) return 'La sesión ha caducado. El entrenamiento y los borradores se conservan en este dispositivo hasta que vuelvas a iniciar sesión.';
-  if (!(error instanceof HttpErrorResponse) || error.status === 0 || error.status >= 500) return 'No se pudo contactar con la nube. No se ha descartado ningún dato; inténtalo de nuevo.';
-  if (error instanceof HttpErrorResponse && error.status === 400) return 'El servidor rechazó la serie. Revisa repeticiones, peso, RPE y número de serie.';
-  return 'No se pudo guardar el entrenamiento cloud.';
+  if (error instanceof HttpErrorResponse && error.status === 401) return 'La sesión ha caducado. El entrenamiento y los borradores se conservan hasta que vuelvas a iniciar sesión.';
+  if (!(error instanceof HttpErrorResponse) || error.status === 0 || error.status >= 500) return 'No se pudo conectar. No se ha descartado ningún dato; inténtalo de nuevo.';
+  if (error instanceof HttpErrorResponse && error.status === 400) return 'No se pudo guardar la serie. Revisa repeticiones, peso, RPE y número de serie.';
+  return 'No se pudo guardar el entrenamiento.';
 }

@@ -50,11 +50,11 @@ export class WorkoutDetailComponent implements OnInit {
         try { this.cloudRoutineName = (await firstValueFrom(this.routineApi.get(this.cloudWorkout.routineId))).name; } catch { /* snapshot remains readable without its routine. */ }
       }
       await Promise.all(this.cloudWorkout.exercises.map(async exercise => {
-        try { this.cloudExerciseNames.set(exercise.exerciseId, getExerciseName(await firstValueFrom(this.exerciseApi.get(exercise.exerciseId)), this.t.lang())); } catch { /* use UUID below; no name matching */ }
+        try { this.cloudExerciseNames.set(exercise.exerciseId, getExerciseName(await firstValueFrom(this.exerciseApi.get(exercise.exerciseId)), this.t.lang())); } catch { /* Keep the snapshot readable without exposing its internal identifier. */ }
       }));
     } catch { this.cloudError = 'No se pudo cargar este entrenamiento.'; }
   }
-  cloudExerciseName(exerciseId: string): string { return this.cloudExerciseNames.get(exerciseId) ?? exerciseId; }
+  cloudExerciseName(exerciseId: string): string { return this.cloudExerciseNames.get(exerciseId) ?? 'Ejercicio sin nombre'; }
 
   startEdit() {
     this.editMode.set(true);

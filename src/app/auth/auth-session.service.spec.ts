@@ -5,6 +5,7 @@ import { Subject, of, throwError } from 'rxjs';
 import { AuthApiService } from './auth-api.service';
 import { AuthResponse, UserResponse } from './auth.models';
 import { AuthSessionService } from './auth-session.service';
+import { AccountSyncService } from '../migration/account-sync.service';
 
 const user: UserResponse = {
   id: '0f3f10cc-932d-4b02-bd2b-7ecf8f2305f2',
@@ -15,14 +16,20 @@ const user: UserResponse = {
 describe('AuthSessionService', () => {
   let service: AuthSessionService;
   let api: jasmine.SpyObj<AuthApiService>;
+  let accountSync: jasmine.SpyObj<AccountSyncService>;
 
   beforeEach(() => {
     localStorage.clear();
     api = jasmine.createSpyObj<AuthApiService>('AuthApiService', [
       'register', 'login', 'refresh', 'logout', 'getCurrentUser',
     ]);
+    accountSync = jasmine.createSpyObj<AccountSyncService>('AccountSyncService', ['start', 'stop']);
     TestBed.configureTestingModule({
-      providers: [AuthSessionService, { provide: AuthApiService, useValue: api }],
+      providers: [
+        AuthSessionService,
+        { provide: AuthApiService, useValue: api },
+        { provide: AccountSyncService, useValue: accountSync },
+      ],
     });
     service = TestBed.inject(AuthSessionService);
   });
@@ -38,6 +45,7 @@ describe('AuthSessionService', () => {
     expect(service.accessToken()).toBe('restored-token');
     expect(service.currentUser()).toEqual(user);
     expect(service.persistenceMode()).toBe('cloud');
+    expect(accountSync.start).toHaveBeenCalledOnceWith(user.id);
   });
 
   it('becomes a guest when the refresh cookie is explicitly invalid', async () => {
@@ -71,6 +79,7 @@ describe('AuthSessionService', () => {
     expect(service.accessToken()).toBe('new-token');
     expect(service.currentUser()).toEqual(user);
     expect(localStorage.getItem('gym-tracker:auth:access-token')).toBeNull();
+    expect(accountSync.start).toHaveBeenCalledOnceWith(user.id);
   });
 
   it('coalesces concurrent refresh attempts', async () => {
@@ -112,6 +121,7 @@ describe('AuthSessionService', () => {
     expect(service.accessToken()).toBeNull();
     expect(service.isGuest()).toBeTrue();
     expect(localStorage.getItem('guest-data-check')).toBe('keep');
+    expect(accountSync.stop).toHaveBeenCalled();
   });
 
   it('leaves guest Dexie data untouched on logout', async () => {

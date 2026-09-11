@@ -1,4 +1,4 @@
-import { Component, OnInit, inject } from '@angular/core';
+import { Component, OnInit, effect, inject } from '@angular/core';
 import { WorkoutHistoryRepository } from '../../data/active-training.repository';
 import { WorkoutHistory } from '../../data/workout-history.model';
 import { CommonModule, DatePipe } from '@angular/common';
@@ -9,6 +9,7 @@ import { AuthSessionService } from '../../auth/auth-session.service';
 import { WorkoutApiService } from '../../workouts/workout-api.service';
 import { RoutineApiService } from '../../routines/routine-api.service';
 import { LocalToCloudMigrationService } from '../../migration/local-to-cloud-migration.service';
+import { AccountSyncService } from '../../migration/account-sync.service';
 
 interface CalendarWorkoutItem {
   source: 'local' | 'cloud'; id: string; routineName: string; startedAt: string; finishedAt: string | null; exerciseCount: number; local?: WorkoutHistory;
@@ -21,6 +22,7 @@ export class CalendarComponent implements OnInit {
   private readonly workoutApi = inject(WorkoutApiService);
   private readonly routineApi = inject(RoutineApiService);
   private readonly migration = inject(LocalToCloudMigrationService);
+  private readonly accountSync = inject(AccountSyncService);
   // Chronological sessions answer the primary question first; the week view remains one tap away.
   view: 'week' | 'list' = 'list';
   workouts: CalendarWorkoutItem[] = [];
@@ -32,7 +34,15 @@ export class CalendarComponent implements OnInit {
 
   get weekWorkoutCount(): number { return this.weekDays.reduce((acc, day) => acc + this.getWorkoutsForDay(day).length, 0); }
   static getStartOfWeek(date: Date): Date { const d = new Date(date); const day = d.getDay(); d.setDate(d.getDate() - day + (day === 0 ? -6 : 1)); d.setHours(0, 0, 0, 0); return d; }
-  ngOnInit() { void this.loadWorkouts(); this.setWeekDays(); }
+  constructor() {
+    effect(() => {
+      this.auth.isAuthenticated();
+      this.auth.currentUser?.();
+      this.accountSync.status();
+      void this.loadWorkouts();
+    });
+  }
+  ngOnInit() { this.setWeekDays(); }
 
   async loadWorkouts(page = this.cloudPageNumber) {
     const rawLocal = await WorkoutHistoryRepository.getAll();
@@ -52,7 +62,7 @@ export class CalendarComponent implements OnInit {
       this.cloudError = null;
     } catch {
       // Deliberately retain legacy records even when cloud history cannot load.
-      this.workouts = localItems;
+      this.workouts = rawLocal.map(workout => ({ source: 'local' as const, id: workout.id, routineName: workout.routineName, startedAt: workout.startedAt, finishedAt: workout.finishedAt, exerciseCount: workout.exercises.length, local: workout }));
       this.cloudError = 'No se pudo cargar todo el historial. Tus sesiones anteriores siguen disponibles.';
     }
   }

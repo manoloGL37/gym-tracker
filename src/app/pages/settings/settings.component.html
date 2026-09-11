@@ -10,12 +10,12 @@
   </div>
 
   <div class="px-4 pt-6 space-y-6">
-    <!-- Account: authentication never changes the existing local repositories in Phase 1. -->
+    <!-- Account -->
     <div class="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
       <label class="block text-sm font-bold uppercase tracking-wide text-gray-700 mb-3">Cuenta</label>
       @if (auth.isAuthenticated()) {
         <p class="font-semibold text-gray-900">{{ auth.currentUser()?.email }}</p>
-        <p class="text-xs text-gray-500 mt-1">Cuenta conectada. Tus entrenamientos anteriores no se modifican automáticamente.</p>
+        <p class="text-xs text-gray-500 mt-1">Tu cuenta mantiene tus datos disponibles cuando vuelves.</p>
         <a routerLink="/exercise-catalog" class="block w-full mt-3 text-center px-4 py-3 rounded-lg font-semibold text-sm bg-orange-600 text-white shadow hover:bg-orange-700 transition-all">Catálogo de ejercicios</a>
         <button (click)="logout()" class="w-full mt-3 px-4 py-3 rounded-lg font-semibold text-sm bg-gray-800 text-white shadow hover:bg-gray-900 transition-all">Cerrar sesión</button>
       } @else if (auth.isInitializing()) {
@@ -32,33 +32,16 @@
       }
     </div>
 
-    @if (auth.isAuthenticated() && migrationPreview(); as preview) {
+    @if (auth.isAuthenticated()) {
       <div class="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
-        <label class="block text-sm font-bold uppercase tracking-wide text-gray-700 mb-3">Guardar datos en tu cuenta</label>
-        <p class="text-sm text-gray-600">Este traslado es opcional. No borra tus datos anteriores ni tus copias de seguridad.</p>
-        <div class="mt-3 grid grid-cols-2 gap-2 text-xs text-gray-700">
-          <div>Rutinas anteriores: {{ preview.routines }}</div><div>Historial anterior: {{ preview.workouts }}</div>
-          <div>Referencias de ejercicios: {{ preview.exerciseReferences }}</div><div>Sin resolver: {{ preview.unresolvedExercises }}</div>
-          <div>Históricos no compatibles: {{ preview.unsupportedWorkouts }}</div><div>Peso corporal local: {{ preview.bodyWeightEntries }}</div>
-        </div>
-        @if (preview.activeTraining) { <p class="mt-3 rounded-lg bg-amber-50 p-2 text-xs text-amber-800">Hay un entrenamiento en curso: se conserva y no se traslada. Termínalo cuando quieras.</p> }
-        @if (preview.observations) { <p class="mt-2 rounded-lg bg-amber-50 p-2 text-xs text-amber-800">{{ preview.observations }} observaciones por ejercicio se conservarán solo en local; la API no tiene ese campo.</p> }
-        @if (preview.bodyWeightEntries) { <p class="mt-2 text-xs text-gray-500">El peso corporal no se migra: el backend no ofrece almacenamiento para él.</p> }
-        @if (preview.hasOtherAccountMigration) { <p class="mt-2 rounded-lg bg-amber-50 p-2 text-xs text-amber-800">Este dispositivo contiene una migración de otra cuenta. Sus UUID cloud nunca se reutilizarán aquí.</p> }
-        @if (migrationLedger(); as ledger) { <p class="mt-3 text-xs font-semibold text-gray-600">Estado: {{ ledger.status }}</p> }
-        @if (preview.routines || preview.workouts) {
-          <div class="mt-3 grid grid-cols-2 gap-2 text-xs">
-            <label class="font-semibold text-gray-700">Reps por defecto (confirmadas)<input [(ngModel)]="targetReps" type="number" min="1" class="mt-1 w-full rounded border p-2" /></label>
-            <label class="font-semibold text-gray-700">Descanso por defecto (s)<input [(ngModel)]="restSeconds" type="number" min="0" class="mt-1 w-full rounded border p-2" /></label>
+        <label class="block text-sm font-bold uppercase tracking-wide text-gray-700 mb-3">Tus datos</label>
+        <p class="text-sm font-semibold text-gray-900" aria-live="polite">{{ syncStatusText() }}</p>
+        <p class="mt-2 text-xs text-gray-500">El peso corporal y las copias de seguridad se conservan por separado.</p>
+        @if (unresolvedExercises().length) {
+          <div class="mt-3 space-y-2"><p class="text-sm font-bold text-gray-800">Necesitamos identificar estos ejercicios:</p>
+            @for (reference of unresolvedExercises(); track reference.key) { <button (click)="openExerciseResolution(reference)" class="w-full rounded-lg border p-3 text-left text-sm font-semibold hover:bg-orange-50">{{ reference.name || 'Ejercicio sin nombre' }} <span class="float-right text-orange-700">Identificar</span></button> }
           </div>
-          <p class="mt-2 text-xs text-gray-500">Las rutinas antiguas no guardan repeticiones objetivo ni descanso. Estos valores explícitos se usarán solo para crear la rutina cloud; no cambian tus datos locales.</p>
-          @if (unresolvedExercises().length) {
-            <div class="mt-3 space-y-2"><p class="text-sm font-bold text-gray-800">Resuelve cada referencia antes de subir sus rutinas:</p>
-              @for (reference of unresolvedExercises(); track reference.key) { <button (click)="openExerciseResolution(reference)" class="w-full rounded-lg border p-3 text-left text-sm font-semibold hover:bg-orange-50">{{ reference.name || 'Ejercicio sin nombre' }} <span class="float-right text-orange-700">Resolver</span></button> }
-            </div>
-          }
-          <div class="mt-4 flex gap-2"><button (click)="startMigration()" [disabled]="migrationBusy()" class="flex-1 rounded-lg bg-orange-600 px-3 py-3 text-sm font-bold text-white disabled:opacity-50">{{ migrationLedger()?.status === 'partial-failure' ? 'Reintentar traslado' : 'Guardar en tu cuenta' }}</button><button (click)="postponeMigration()" [disabled]="migrationBusy()" class="rounded-lg border px-3 py-3 text-sm font-bold">Ahora no</button></div>
-        } @else { <p class="mt-3 text-sm text-gray-600">No hay rutinas ni históricos locales pendientes. Las preferencias, copias, entrenamiento activo y peso corporal permanecen locales.</p> }
+        }
         @if (migrationError(); as error) { <p class="mt-3 text-sm text-red-700">{{ error }}</p> }
       </div>
     }
@@ -72,7 +55,7 @@
       </div>
     </div>
 
-    <!-- Local data -->
+    <!-- Browser data protection -->
     <div class="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
       <label class="block text-sm font-bold uppercase tracking-wide text-gray-700 mb-3">{{ t.t('settings.localData') }}</label>
       <div class="mb-3 px-3 py-2 rounded-lg bg-gray-50 border border-gray-200">
@@ -159,7 +142,7 @@
 
 @if (resolving(); as reference) {
   <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"><div class="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-5 shadow-xl">
-    <h2 class="text-lg font-bold">Resolver «{{ reference.name }}»</h2><p class="mt-1 text-sm text-gray-600">Los nombres no se emparejan automáticamente. Elige explícitamente un ejercicio del catálogo o créalo como personalizado.</p>
+    <h2 class="text-lg font-bold">Necesitamos identificar este ejercicio</h2><p class="mt-1 text-sm text-gray-600">«{{ reference.name }}» puede coincidir con varios ejercicios. Elige el correcto o créalo como personalizado.</p>
     <form (ngSubmit)="searchMigrationCatalog()" class="mt-3 flex gap-2"><input [(ngModel)]="migrationSearch" name="migrationSearch" class="min-w-0 flex-1 rounded border p-2" /><button class="rounded bg-orange-600 px-3 py-2 font-bold text-white">Buscar</button></form>
     <div class="mt-3 space-y-2">@for (exercise of migrationCatalog(); track exercise.id) { <button (click)="selectMigrationCatalogExercise(exercise)" class="w-full rounded border p-3 text-left hover:bg-orange-50"><span class="font-bold">{{ migrationExerciseName(exercise) }}</span><span class="ml-2 text-xs text-gray-500">{{ exercise.source === 'USER' ? 'Personalizado' : 'Catálogo' }}</span></button> }</div>
     <div class="mt-4 flex gap-2"><button (click)="createMigrationCustomExercise()" [disabled]="!reference.name.trim() || migrationBusy()" class="flex-1 rounded bg-emerald-600 px-3 py-2 text-sm font-bold text-white">Crear personalizado</button><button (click)="resolving.set(null)" class="rounded border px-3 py-2 text-sm font-bold">Cerrar</button></div>

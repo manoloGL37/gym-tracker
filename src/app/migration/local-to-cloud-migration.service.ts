@@ -1,4 +1,5 @@
 import { Injectable, Injector, inject } from '@angular/core';
+import { HttpErrorResponse } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 import { ActiveTrainingRepository, db, Routine, RoutinesRepository, WorkoutHistoryRepository } from '../data/active-training.repository';
 import { WorkoutHistory } from '../data/workout-history.model';
@@ -11,8 +12,8 @@ import { toBackendLocalDateTime } from '../workouts/workout-domain';
 import { ExerciseMapping, MigrationLedger, MigrationPreview, MigrationRecordStatus, MigrationStatus, ResourceMapping } from './local-to-cloud-migration.models';
 
 /**
- * A deliberately narrow one-way importer. It is not a sync queue: only explicit user
- * actions call it, successful records remain mapped, and legacy Dexie rows stay intact.
+ * A deliberately narrow one-way synchronizer. Successful records remain mapped and
+ * legacy Dexie rows stay intact; orchestration and retry timing live in AccountSyncService.
  */
 @Injectable({ providedIn: 'root' })
 export class LocalToCloudMigrationService {
@@ -103,7 +104,6 @@ export class LocalToCloudMigrationService {
       ledger.status = preview.bodyWeightEntries || preview.activeTraining ? 'completed-local-only' : 'no-local-data';
       await this.save(ledger); return ledger;
     }
-    if (preview.unresolvedExercises > 0) { ledger.status = 'needs-resolution'; await this.save(ledger); return ledger; }
     ledger.status = 'migrating'; await this.save(ledger);
     await this.migrateResolvedExercises(ledger);
     await this.migrateRoutines(ledger);
@@ -118,6 +118,29 @@ export class LocalToCloudMigrationService {
 
   async isWorkoutMigrated(accountId: string, localWorkoutId: string): Promise<boolean> {
     return (await this.getLedger(accountId)).workouts[localWorkoutId]?.status === 'migrated';
+  }
+
+  async getProgress(accountId: string): Promise<{ completed: number; total: number; pending: number; attention: number }> {
+    const [ledger, unresolved] = await Promise.all([this.getLedger(accountId), this.unresolvedReferences(accountId)]);
+    const records = [
+      ...Object.values(ledger.exercises),
+      ...Object.values(ledger.routines),
+      ...Object.values(ledger.workouts),
+      ...Object.values(ledger.sets),
+    ];
+    const primaryRecords = [
+      ...Object.values(ledger.exercises),
+      ...Object.values(ledger.routines),
+      ...Object.values(ledger.workouts),
+    ];
+    const supported = records.filter(record => record.status !== 'unsupported');
+    return {
+      completed: supported.filter(record => record.status === 'migrated').length,
+      total: supported.length + unresolved.length,
+      // Pending set rows inherit their workout's state and must not create an unresolved retry loop.
+      pending: primaryRecords.filter(record => record.status === 'pending').length,
+      attention: unresolved.length + primaryRecords.filter(record => record.status === 'failed' || record.status === 'unsupported').length,
+    };
   }
 
   private async ensureClientIds(ledger: MigrationLedger): Promise<void> {
@@ -139,7 +162,7 @@ export class LocalToCloudMigrationService {
           translations: [{ language: 'es', name: mapping.name.trim(), instructions: null }],
         }));
         mapping.serverId = result.id; mapping.status = 'migrated'; delete mapping.error;
-      } catch (error) { mapping.status = 'failed'; mapping.error = errorMessage(error); }
+      } catch (error) { mapping.status = failureStatus(error); mapping.error = errorMessage(error); }
       await this.save(ledger);
     }
   }
@@ -156,7 +179,7 @@ export class LocalToCloudMigrationService {
           exercises: routine.exercises.map((exercise, position) => ({ exerciseId: exerciseIds[position]!, position, sets: integerAtLeast(exercise.setsCount, 1), targetReps: ledger.defaults.targetReps, restSeconds: ledger.defaults.restSeconds, notes: null })),
         }));
         mapping.serverId = response.id; mapping.status = 'migrated'; delete mapping.error;
-      } catch (error) { mapping.status = 'failed'; mapping.error = errorMessage(error); }
+      } catch (error) { mapping.status = failureStatus(error); mapping.error = errorMessage(error); }
       await this.save(ledger);
     }
   }
@@ -167,7 +190,14 @@ export class LocalToCloudMigrationService {
       const mapping = ledger.workouts[workout.id] ?? (ledger.workouts[workout.id] = pendingMapping());
       if (mapping.status === 'migrated' || mapping.status === 'unsupported') continue;
       const unsupported = this.unsupportedWorkoutReason(workout, routines);
-      if (unsupported) { mapping.status = 'unsupported'; mapping.localOnlyReason = unsupported; delete mapping.error; await this.save(ledger); continue; }
+      if (unsupported) {
+        mapping.status = 'unsupported'; mapping.localOnlyReason = unsupported; delete mapping.error;
+        for (const exercise of workout.exercises) for (const set of exercise.sets) {
+          const setMapping = ledger.sets[setKey(workout.id, exercise.exerciseId, set.setIndex)];
+          if (setMapping?.status !== 'migrated') { setMapping.status = 'unsupported'; setMapping.localOnlyReason = unsupported; }
+        }
+        await this.save(ledger); continue;
+      }
       const routineMapping = ledger.routines[workout.routineId];
       if (!routineMapping?.serverId) { mapping.status = 'blocked'; mapping.error = 'La rutina vinculada todavía no se ha migrado.'; await this.save(ledger); continue; }
       try {
@@ -190,7 +220,7 @@ export class LocalToCloudMigrationService {
           ? 'Las observaciones por ejercicio permanecen solo en local.'
           : undefined;
         delete mapping.error;
-      } catch (error) { mapping.status = 'failed'; mapping.error = errorMessage(error); }
+      } catch (error) { mapping.status = failureStatus(error); mapping.error = errorMessage(error); }
       await this.save(ledger);
     }
   }
@@ -207,7 +237,8 @@ export class LocalToCloudMigrationService {
 
   private async finalize(ledger: MigrationLedger): Promise<void> {
     const all = [...Object.values(ledger.exercises), ...Object.values(ledger.routines), ...Object.values(ledger.workouts)];
-    if (all.some(mapping => mapping.status === 'failed' || mapping.status === 'blocked')) ledger.status = 'partial-failure';
+    if (all.some(mapping => mapping.status === 'pending')) ledger.status = 'partial-failure';
+    else if (all.some(mapping => mapping.status === 'failed' || mapping.status === 'blocked')) ledger.status = 'needs-resolution';
     else if (all.some(mapping => mapping.status === 'unsupported')) ledger.status = 'completed-local-only';
     else ledger.status = 'completed';
     await this.save(ledger);
@@ -227,7 +258,15 @@ function pendingMapping(): ResourceMapping { return { clientId: crypto.randomUUI
 function integerAtLeast(value: number, minimum: number): number { return Number.isInteger(value) && value >= minimum ? value : minimum; }
 function localDateTime(value: string): string { const parsed = new Date(value); if (Number.isNaN(parsed.getTime())) throw new Error('Fecha local no válida'); return toBackendLocalDateTime(parsed); }
 function errorMessage(error: unknown): string { return error instanceof Error ? error.message : 'La solicitud no fue confirmada; se puede reintentar con el mismo clientId.'; }
+function failureStatus(error: unknown): MigrationRecordStatus {
+  if (error instanceof HttpErrorResponse && (error.status === 0 || error.status === 408 || error.status === 429 || error.status >= 500)) return 'pending';
+  if (error instanceof Error && error.name === 'TimeoutError') return 'pending';
+  return 'failed';
+}
 
 function localExerciseReferences(routines: Routine[]): { key: string; name: string }[] {
-  return routines.flatMap(routine => routine.exercises.map(exercise => ({ key: routineExerciseKey(routine.id, exercise.id), name: exercise.name })));
+  return [...new Map(routines.flatMap(routine => routine.exercises.map(exercise => {
+    const reference = { key: routineExerciseKey(routine.id, exercise.id), name: exercise.name };
+    return [reference.key, reference] as const;
+  }))).values()];
 }

@@ -1,4 +1,4 @@
-import { Component, OnInit, inject, computed, Signal } from '@angular/core';
+import { Component, inject, computed, effect } from '@angular/core';
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { TranslationService } from '../../services/translation.service';
 import { Router, RouterLink } from '@angular/router';
@@ -10,6 +10,25 @@ import { BodyWeightEntry } from '../../data/body-weight.model';
 import { CloudActiveTraining } from '../../workouts/workout-domain';
 import { AuthSessionService } from '../../auth/auth-session.service';
 import { LocalToCloudMigrationService } from '../../migration/local-to-cloud-migration.service';
+import { AccountSyncService } from '../../migration/account-sync.service';
+import { RoutineApiService } from '../../routines/routine-api.service';
+import { WorkoutApiService } from '../../workouts/workout-api.service';
+import { StatisticsApiService } from '../../statistics/statistics-api.service';
+import { firstValueFrom } from 'rxjs';
+
+interface HomeWorkout {
+  id: string;
+  routineName: string;
+  finishedAt: string;
+  exerciseCount: number;
+  accountBacked: boolean;
+}
+
+interface HomeRoutine {
+  id: string;
+  name: string;
+  exerciseCount: number | null;
+}
 
 @Component({
   selector: 'app-home',
@@ -18,17 +37,21 @@ import { LocalToCloudMigrationService } from '../../migration/local-to-cloud-mig
   templateUrl: './home.component.html',
   styleUrls: ['./home.component.css']
 })
-export class HomeComponent implements OnInit {
+export class HomeComponent {
   t = inject(TranslationService);
-  lastWorkout: WorkoutHistory | null = null;
+  lastWorkout: HomeWorkout | null = null;
   activeTraining: ActiveTraining | CloudActiveTraining | null = null;
   weekWorkoutCount = 0;
   weekVolume = 0;
   latestWeight: BodyWeightEntry | null = null;
-  routineShortcuts: Routine[] = [];
+  routineShortcuts: HomeRoutine[] = [];
   readonly today = new Date();
   private readonly auth = inject(AuthSessionService);
   private readonly migration = inject(LocalToCloudMigrationService);
+  private readonly accountSync = inject(AccountSyncService);
+  private readonly routineApi = inject(RoutineApiService);
+  private readonly workoutApi = inject(WorkoutApiService);
+  private readonly statisticsApi = inject(StatisticsApiService);
 
   // Signal for formatted date, recalculated on language change
   formattedDate = computed(() => {
@@ -43,9 +66,16 @@ export class HomeComponent implements OnInit {
     }).format(this.today);
   });
 
-  constructor(private router: Router) {}
+  constructor(private router: Router) {
+    effect(() => {
+      this.auth.isAuthenticated();
+      this.auth.currentUser?.();
+      this.accountSync.status();
+      void this.loadDashboard();
+    });
+  }
 
-  async ngOnInit() {
+  private async loadDashboard(): Promise<void> {
     const [workouts, activeTraining, cloudActiveTraining, weightEntries, routines] = await Promise.all([
       WorkoutHistoryRepository.getAll(),
       ActiveTrainingRepository.get().then(training => training ?? null),
@@ -56,13 +86,43 @@ export class HomeComponent implements OnInit {
 
     const accountId = this.auth.currentUser?.()?.id;
     const migrated = accountId ? await Promise.all(workouts.map(workout => this.migration.isWorkoutMigrated(accountId, workout.id))) : workouts.map(() => false);
-    const visibleWorkouts = workouts.filter((_, index) => !migrated[index]);
-    this.lastWorkout = visibleWorkouts[0] ?? null;
     this.activeTraining = activeTraining ?? cloudActiveTraining;
     this.latestWeight = weightEntries[0] ?? null;
-    this.weekWorkoutCount = this.getCurrentWeekWorkouts(visibleWorkouts).length;
-    this.weekVolume = this.getCurrentWeekWorkouts(visibleWorkouts).reduce((sum, workout) => sum + this.calculateWorkoutVolume(workout), 0);
-    this.routineShortcuts = routines.slice(0, 3);
+    if (!accountId) {
+      this.useStoredDashboard(workouts, routines);
+      return;
+    }
+
+    try {
+      const range = this.currentWeekRange();
+      const [summary, accountWorkouts, accountRoutines] = await Promise.all([
+        firstValueFrom(this.statisticsApi.summary(range)),
+        firstValueFrom(this.workoutApi.list({ page: 0, size: 1 })),
+        firstValueFrom(this.routineApi.list({ page: 0, size: 3 })),
+      ]);
+      this.weekWorkoutCount = summary.workouts;
+      this.weekVolume = summary.volume;
+      const latest = accountWorkouts.content[0];
+      let routineName = 'Rutina sin nombre';
+      if (latest?.routineId) {
+        try { routineName = (await firstValueFrom(this.routineApi.get(latest.routineId))).name; } catch { /* The workout remains readable. */ }
+      }
+      this.lastWorkout = latest ? {
+        id: latest.id,
+        routineName,
+        finishedAt: latest.completedAt ?? latest.startedAt,
+        exerciseCount: latest.exercises.length,
+        accountBacked: true,
+      } : null;
+      const visibleStored = routines.filter((_, index) => !migrated[index]).map(routine => this.homeRoutine(routine));
+      this.routineShortcuts = [
+        ...accountRoutines.content.map(routine => ({ id: routine.id, name: routine.name, exerciseCount: null })),
+        ...visibleStored,
+      ].slice(0, 3);
+    } catch {
+      // A temporary account failure is not an empty dashboard.
+      this.useStoredDashboard(workouts, routines);
+    }
   }
 
   startTraining() {
@@ -88,6 +148,29 @@ export class HomeComponent implements OnInit {
       const finishedAt = new Date(workout.finishedAt);
       return finishedAt >= start && finishedAt <= end;
     });
+  }
+
+  private currentWeekRange(): { from: string; to: string } {
+    const start = new Date();
+    const day = start.getDay();
+    start.setDate(start.getDate() - day + (day === 0 ? -6 : 1));
+    const end = new Date(start);
+    end.setDate(start.getDate() + 6);
+    const date = (value: Date) => `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`;
+    return { from: date(start), to: date(end) };
+  }
+
+  private useStoredDashboard(workouts: WorkoutHistory[], routines: Routine[]): void {
+    const currentWeek = this.getCurrentWeekWorkouts(workouts);
+    const latest = workouts[0];
+    this.lastWorkout = latest ? { id: latest.id, routineName: latest.routineName, finishedAt: latest.finishedAt, exerciseCount: latest.exercises.length, accountBacked: false } : null;
+    this.weekWorkoutCount = currentWeek.length;
+    this.weekVolume = currentWeek.reduce((sum, workout) => sum + this.calculateWorkoutVolume(workout), 0);
+    this.routineShortcuts = routines.slice(0, 3).map(routine => this.homeRoutine(routine));
+  }
+
+  private homeRoutine(routine: Routine): HomeRoutine {
+    return { id: routine.id, name: routine.name, exerciseCount: routine.exercises.length };
   }
 
   private calculateWorkoutVolume(workout: WorkoutHistory): number {

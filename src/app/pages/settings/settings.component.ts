@@ -6,7 +6,7 @@ import { BackupService } from '../../services/backup.service';
 import { Router, RouterLink } from '@angular/router';
 import { AuthSessionService } from '../../auth/auth-session.service';
 import { LocalToCloudMigrationService } from '../../migration/local-to-cloud-migration.service';
-import { MigrationLedger, MigrationPreview } from '../../migration/local-to-cloud-migration.models';
+import { AccountSyncService } from '../../migration/account-sync.service';
 import { ExerciseResponse } from '../../exercises/exercise-api.models';
 import { getExerciseName } from '../../exercises/exercise-domain';
 
@@ -39,6 +39,7 @@ export class SettingsComponent implements OnInit {
   router = inject(Router);
   auth = inject(AuthSessionService);
   migration = inject(LocalToCloudMigrationService);
+  accountSync = inject(AccountSyncService);
 
   // Read backup status directly from localStorage
   lastBackupTime = computed(() => {
@@ -62,16 +63,12 @@ export class SettingsComponent implements OnInit {
     supported: typeof navigator !== 'undefined' && !!navigator.storage,
   });
   storageMessage = signal<string | null>(null);
-  migrationPreview = signal<MigrationPreview | null>(null);
-  migrationLedger = signal<MigrationLedger | null>(null);
   migrationBusy = signal(false);
   migrationError = signal<string | null>(null);
   unresolvedExercises = signal<{ key: string; name: string }[]>([]);
   resolving = signal<{ key: string; name: string } | null>(null);
   migrationSearch = '';
   migrationCatalog = signal<ExerciseResponse[]>([]);
-  targetReps = 10;
-  restSeconds = 90;
 
   ngOnInit() {
     this.refreshStorageInfo();
@@ -80,30 +77,8 @@ export class SettingsComponent implements OnInit {
 
   async loadMigration(): Promise<void> {
     const accountId = this.auth.currentUser()?.id;
-    if (!accountId) { this.migrationPreview.set(null); this.migrationLedger.set(null); return; }
-    const [preview, ledger, unresolved] = await Promise.all([
-      this.migration.getPreview(accountId), this.migration.getLedger(accountId), this.migration.unresolvedReferences(accountId),
-    ]);
-    this.migrationPreview.set(preview); this.migrationLedger.set(ledger); this.unresolvedExercises.set(unresolved);
-    this.targetReps = ledger.defaults.targetReps; this.restSeconds = ledger.defaults.restSeconds;
-  }
-
-  async startMigration(): Promise<void> {
-    const accountId = this.auth.currentUser()?.id;
-    if (!accountId || this.migrationBusy()) return;
-    this.migrationBusy.set(true); this.migrationError.set(null);
-    try {
-      await this.migration.setDefaults(accountId, Number(this.targetReps), Number(this.restSeconds));
-      await this.migration.start(accountId);
-      await this.loadMigration();
-    } catch (error) { this.migrationError.set(error instanceof Error ? error.message : 'No se pudo iniciar la migración.'); }
-    finally { this.migrationBusy.set(false); }
-  }
-
-  async postponeMigration(): Promise<void> {
-    const accountId = this.auth.currentUser()?.id;
-    if (!accountId) return;
-    await this.migration.postpone(accountId); await this.loadMigration();
+    if (!accountId) { this.unresolvedExercises.set([]); return; }
+    this.unresolvedExercises.set(await this.migration.unresolvedReferences(accountId));
   }
 
   async openExerciseResolution(reference: { key: string; name: string }): Promise<void> {
@@ -121,17 +96,32 @@ export class SettingsComponent implements OnInit {
     const accountId = this.auth.currentUser()?.id; const reference = this.resolving();
     if (!accountId || !reference) return;
     await this.migration.chooseCatalogExercise(accountId, reference.key, exercise);
-    this.resolving.set(null); await this.loadMigration();
+    this.resolving.set(null); await this.loadMigration(); this.accountSync.retryNow();
   }
 
   async createMigrationCustomExercise(): Promise<void> {
     const accountId = this.auth.currentUser()?.id; const reference = this.resolving();
     if (!accountId || !reference) return;
     await this.migration.chooseCustomExercise(accountId, reference.key);
-    this.resolving.set(null); await this.startMigration();
+    this.resolving.set(null); await this.loadMigration(); this.accountSync.retryNow();
   }
 
   migrationExerciseName(exercise: ExerciseResponse): string { return getExerciseName(exercise, this.t.lang()); }
+
+  syncStatusText(): string {
+    const completed = this.accountSync.completed();
+    const total = this.accountSync.total();
+    switch (this.accountSync.status()) {
+      case 'syncing': return total ? `Sincronizando con tu cuenta · ${completed} de ${total}` : 'Sincronizando con tu cuenta';
+      case 'waiting': return 'Esperando conexión';
+      case 'attention': {
+        const count = this.accountSync.attention();
+        return count === 1 ? '1 elemento necesita tu atención' : `${count} elementos necesitan tu atención`;
+      }
+      case 'synced': return 'Todo lo compatible está sincronizado';
+      default: return 'Preparando sincronización';
+    }
+  }
 
   // Manual restore from server
   restoreError = signal<string | null>(null);

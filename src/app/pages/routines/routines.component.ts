@@ -13,6 +13,7 @@ import { RoutineResponse } from '../../routines/routine-api.models';
 import { CloudRoutineDraft, cloudDraftFromResponse, cloudExerciseDraft, newCloudRoutineDraft, RoutineListItem, toCreateRoutineRequest } from '../../routines/routine-domain';
 import { TranslationService } from '../../services/translation.service';
 import { LocalToCloudMigrationService } from '../../migration/local-to-cloud-migration.service';
+import { AccountSyncService } from '../../migration/account-sync.service';
 
 @Component({ selector: 'app-routines', standalone: true, imports: [CommonModule, FormsModule], templateUrl: './routines.component.html', styleUrls: ['./routines.component.css'] })
 export class RoutinesComponent {
@@ -21,6 +22,7 @@ export class RoutinesComponent {
   private readonly routineApi = inject(RoutineApiService);
   private readonly exerciseApi = inject(ExerciseApiService);
   private readonly migration = inject(LocalToCloudMigrationService);
+  private readonly accountSync = inject(AccountSyncService);
 
   routines: RoutineListItem[] = [];
   loading = true;
@@ -45,7 +47,12 @@ export class RoutinesComponent {
   selectorPageNumber = 0;
 
   constructor() {
-    effect(() => void this.loadRoutines());
+    effect(() => {
+      this.auth.isAuthenticated();
+      this.auth.currentUser?.();
+      this.accountSync.status();
+      void this.loadRoutines();
+    });
   }
 
   get isCloudEditor(): boolean {
@@ -76,8 +83,8 @@ export class RoutinesComponent {
       this.cloudTotalPages = cloud.totalPages;
       this.routines = [...localItems, ...cloud.content.map(routine => ({ source: 'cloud' as const, routine }))];
     } catch (error) {
-      // Local data is independent of the cloud request and must remain on screen on failure.
-      this.routines = localItems;
+      // Keep the last readable representation available while the account service wakes.
+      this.routines = rawLocal.map(routine => ({ source: 'local', routine }));
       this.error.set(routineErrorMessage(error));
     } finally {
       this.cloudLoading = false;
@@ -228,10 +235,10 @@ export class RoutinesComponent {
 }
 
 function routineErrorMessage(error: unknown): string {
-  if (!(error instanceof HttpErrorResponse) || error.status === 0 || error.status >= 500) return 'No se pudo contactar con la nube. Tus rutinas locales siguen disponibles; inténtalo de nuevo.';
-  if (error.status === 401) return 'La sesión ha caducado. Inicia sesión de nuevo para usar las rutinas cloud.';
-  if (error.status === 403) return 'No tienes permiso para esta rutina cloud.';
-  if (error.status === 404) return 'La rutina o alguno de sus ejercicios ya no está disponible en la nube.';
-  if (error.status === 400) return 'El servidor rechazó los datos de la rutina. Revisa los campos.';
-  return 'No se pudo completar la operación cloud.';
+  if (!(error instanceof HttpErrorResponse) || error.status === 0 || error.status >= 500) return 'No se pudieron actualizar todas tus rutinas. Las que ya estaban disponibles siguen aquí; inténtalo de nuevo.';
+  if (error.status === 401) return 'La sesión ha caducado. Inicia sesión de nuevo para continuar.';
+  if (error.status === 403) return 'No tienes permiso para modificar esta rutina.';
+  if (error.status === 404) return 'La rutina o alguno de sus ejercicios ya no está disponible.';
+  if (error.status === 400) return 'No se pudieron guardar los datos de la rutina. Revisa los campos.';
+  return 'No se pudo completar la operación.';
 }

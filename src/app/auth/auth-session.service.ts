@@ -1,7 +1,8 @@
-import { computed, Injectable, inject, signal } from '@angular/core';
+import { computed, Injectable, Injector, inject, signal } from '@angular/core';
 import { HttpErrorResponse } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 import { AuthApiService } from './auth-api.service';
+import { AccountSyncService } from '../migration/account-sync.service';
 import {
   AuthInitializationStatus,
   CreateUserRequest,
@@ -14,6 +15,8 @@ import {
 @Injectable({ providedIn: 'root' })
 export class AuthSessionService {
   private readonly api = inject(AuthApiService);
+  private readonly injector = inject(Injector);
+  private get accountSync(): AccountSyncService { return this.injector.get(AccountSyncService); }
   private initializationPromise: Promise<void> | null = null;
   private refreshPromise: Promise<string> | null = null;
 
@@ -59,8 +62,10 @@ export class AuthSessionService {
     this.initializationStatus.set('checking');
 
     try {
-      this.currentUser.set(await firstValueFrom(this.api.getCurrentUser()));
+      const user = await firstValueFrom(this.api.getCurrentUser());
+      this.currentUser.set(user);
       this.initializationStatus.set('ready');
+      this.accountSync.start(user.id);
     } catch (error) {
       this.handleSessionLoadError(error);
       throw error;
@@ -68,6 +73,7 @@ export class AuthSessionService {
   }
 
   async logout(): Promise<void> {
+    this.accountSync.stop();
     try {
       await firstValueFrom(this.api.logout());
     } finally {
@@ -107,8 +113,10 @@ export class AuthSessionService {
     this.initializationStatus.set('checking');
     try {
       await this.refreshAccessToken();
-      this.currentUser.set(await firstValueFrom(this.api.getCurrentUser()));
+      const user = await firstValueFrom(this.api.getCurrentUser());
+      this.currentUser.set(user);
       this.initializationStatus.set('ready');
+      this.accountSync.start(user.id);
     } catch (error) {
       this.handleSessionLoadError(error);
     }
@@ -119,6 +127,7 @@ export class AuthSessionService {
   }
 
   private clearAuthState(): void {
+    this.accountSync.stop();
     this.accessToken.set(null);
     this.currentUser.set(null);
     this.initializationStatus.set('ready');

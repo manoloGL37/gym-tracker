@@ -281,7 +281,7 @@ function exerciseErrorMessage(error: unknown): string {
     return 'La sesión ha caducado. Inicia sesión de nuevo para usar el catálogo.';
   }
   if (error.status === 400) {
-    return 'El servidor rechazó los datos del ejercicio. Revisa el formulario.';
+    return 'No se pudieron guardar los datos del ejercicio. Revisa el formulario.';
   }
   return 'No se pudo completar la operación del catálogo.';
 }

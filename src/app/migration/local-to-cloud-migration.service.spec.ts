@@ -1,5 +1,6 @@
 import { TestBed } from '@angular/core/testing';
-import { of } from 'rxjs';
+import { HttpErrorResponse } from '@angular/common/http';
+import { of, throwError } from 'rxjs';
 import { db, Routine } from '../data/active-training.repository';
 import { ExerciseApiService } from '../exercises/exercise-api.service';
 import { RoutineApiService } from '../routines/routine-api.service';
@@ -68,6 +69,36 @@ describe('LocalToCloudMigrationService', () => {
   it('reuses a real local exercise identity across routines without using its display name', () => {
     expect(routineExerciseKey('routine-a', 'local-exercise-1')).toBe(routineExerciseKey('routine-b', 'local-exercise-1'));
     expect(routineExerciseKey('routine-a', 'local-exercise-1')).not.toBe(routineExerciseKey('routine-a', 'local-exercise-2'));
+  });
+
+  it('syncs independent routines while only the unresolved dependency remains blocked', async () => {
+    await db.routines.bulkPut([
+      localRoutine('resolved-routine', 'resolved-exercise'),
+      localRoutine('pending-routine', 'pending-exercise'),
+    ]);
+    await service.chooseCatalogExercise('account-a', routineExerciseKey('resolved-routine', 'resolved-exercise'), { id: 'catalog-1' } as any);
+    routineApi.create.and.returnValue(of({ id: 'server-routine', clientId: 'stable', name: 'Resolved', description: null, exercises: [], createdAt: '', updatedAt: '' }));
+
+    await service.start('account-a');
+
+    const ledger = await service.getLedger('account-a');
+    expect(ledger.routines['resolved-routine'].status).toBe('migrated');
+    expect(ledger.routines['pending-routine'].status).toBe('blocked');
+    expect(routineApi.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps transient failures pending with the same clientId', async () => {
+    await db.routines.put(localRoutine('routine-1', 'exercise-1'));
+    await service.chooseCatalogExercise('account-a', routineExerciseKey('routine-1', 'exercise-1'), { id: 'catalog-1' } as any);
+    routineApi.create.and.returnValue(throwError(() => new HttpErrorResponse({ status: 503 })));
+
+    await service.start('account-a');
+    const first = (await service.getLedger('account-a')).routines['routine-1'];
+    await service.start('account-a');
+    const second = (await service.getLedger('account-a')).routines['routine-1'];
+
+    expect(first.status).toBe('pending');
+    expect(second.clientId).toBe(first.clientId);
   });
 });
 

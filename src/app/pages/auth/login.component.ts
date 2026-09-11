@@ -36,11 +36,11 @@ export class LoginComponent {
 
 export function authErrorMessage(error: unknown): string {
   if (!(error instanceof HttpErrorResponse)) {
-    return 'No se pudo contactar con el servidor. Tus datos locales siguen disponibles.';
+    return 'No se pudo conectar. Tus datos siguen disponibles.';
   }
 
   if (error.status === 0 || error.status >= 500) {
-    return 'El servidor no está disponible todavía. Tus datos locales siguen disponibles; inténtalo de nuevo.';
+    return 'El servicio todavía se está preparando. Tus datos siguen disponibles; inténtalo de nuevo.';
   }
 
   const body = error.error as BackendErrorResponse | undefined;

@@ -114,7 +114,7 @@ describe('StatsComponent', () => {
     TestBed.resetTestingModule();
   });
 
-  it('keeps Local statistics on Dexie and calculates only real local sets, reps and volume', async () => {
+  it('uses guest statistics and calculates only real stored sets, reps and volume', async () => {
     await create(false);
     expect(component.source()).toBe('local');
     expect(component.currentStats()).toEqual(jasmine.objectContaining({
@@ -127,7 +127,7 @@ describe('StatsComponent', () => {
     expect(api.comparison).not.toHaveBeenCalled();
   });
 
-  it('uses Cloud aggregates without adding legacy Local totals', async () => {
+  it('automatically uses account aggregates without adding legacy totals', async () => {
     await create(true);
     expect(component.source()).toBe('cloud');
     expect(component.currentStats().workoutCount).toBe(2);
@@ -196,14 +196,15 @@ describe('StatsComponent', () => {
     expect(component.error()).toBeNull();
   });
 
-  it('offers retry and keeps Local selectable after a Cloud API error', async () => {
+  it('keeps account statistics authoritative after a temporary API error and removes the source switch', async () => {
     await create(true);
     api.comparison.and.returnValue(throwError(() => new HttpErrorResponse({ status: 0 })));
     await component.loadStats();
     expect(component.error()).toBe('stats.cloudError');
-    await component.setSource('local');
-    expect(component.error()).toBeNull();
-    expect(component.currentStats().totalVolume).toBe(730);
+    fixture.detectChanges();
+    expect(component.source()).toBe('cloud');
+    expect(fixture.debugElement.query(By.css('.source-switch'))).toBeNull();
+    expect(fixture.nativeElement.textContent).not.toContain('stats.viewLocal');
   });
 
   it('searches the backend catalog and looks up exercise statistics by UUID and current range', async () => {

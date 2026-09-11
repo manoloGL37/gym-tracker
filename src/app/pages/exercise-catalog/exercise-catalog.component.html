@@ -67,7 +67,7 @@
                     <div class="text-xs text-gray-500 mt-1">{{ exercise.category || 'Sin categoría' }} · {{ exercise.muscleGroup || 'Sin grupo muscular' }}</div>
                   </div>
                   <span [class.bg-emerald-100]="exercise.source === 'USER'" [class.text-emerald-800]="exercise.source === 'USER'" [class.bg-gray-100]="exercise.source !== 'USER'" class="h-fit rounded-full px-2 py-1 text-xs font-bold">
-                    {{ exercise.source === 'USER' ? 'Personalizado' : 'Global' }}
+                    {{ exercise.source === 'USER' ? 'Personalizado' : 'Catálogo' }}
                   </span>
                 </div>
               </button>
@@ -89,9 +89,9 @@
         <div class="flex justify-between gap-3">
           <div>
             <h2 class="text-2xl font-black text-gray-900">{{ nameForDetail }}</h2>
-            <p class="text-sm text-gray-500 mt-1">{{ exercise.source === 'USER' ? 'Ejercicio personalizado' : 'Ejercicio global' }}</p>
+            <p class="text-sm text-gray-500 mt-1">{{ exercise.source === 'USER' ? 'Ejercicio personalizado' : 'Ejercicio del catálogo' }}</p>
           </div>
-          <span class="rounded-full bg-gray-100 px-2 py-1 h-fit text-xs font-bold">{{ exercise.source }}</span>
+          <span class="rounded-full bg-gray-100 px-2 py-1 h-fit text-xs font-bold">{{ exercise.source === 'USER' ? 'Personalizado' : 'Catálogo' }}</span>
         </div>
         @if (detailTranslation?.instructions) { <p class="mt-4 text-sm text-gray-700 whitespace-pre-line">{{ detailTranslation?.instructions }}</p> }
         <dl class="grid grid-cols-2 gap-3 mt-5 text-sm">
@@ -111,7 +111,7 @@
       <button (click)="cancelForm()" class="mb-4 text-sm font-bold text-orange-700">← Cancelar</button>
       <form (ngSubmit)="save()" class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-3">
         <h2 class="text-xl font-black text-gray-900">{{ editingExercise ? 'Editar ejercicio' : 'Nuevo ejercicio personalizado' }}</h2>
-        <p class="text-xs text-gray-500">El clientId se conserva si el envío falla para que el reintento sea seguro.</p>
+        <p class="text-xs text-gray-500">Si pierdes la conexión al guardar, podrás reintentarlo sin crear duplicados.</p>
         <label class="block text-sm font-bold text-gray-700">Idioma<input [(ngModel)]="draft.language" name="language" required maxlength="10" [readonly]="editingExercise !== null" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2" /></label>
         <label class="block text-sm font-bold text-gray-700">Nombre<input [(ngModel)]="draft.name" name="name" required maxlength="255" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2" /></label>
         <label class="block text-sm font-bold text-gray-700">Instrucciones<textarea [(ngModel)]="draft.instructions" name="instructions" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"></textarea></label>

@@ -290,13 +290,6 @@ export class StatsComponent implements OnInit {
     await this.loadStats();
   }
 
-  async setSource(source: StatisticsSource): Promise<void> {
-    if (source === this.source() || (source === 'cloud' && !this.auth.isAuthenticated())) return;
-    this.source.set(source);
-    await this.loadStats();
-    if (source === 'cloud' && this.selectedExerciseId) await this.loadExerciseStats();
-  }
-
   async searchExercises(): Promise<void> {
     if (!this.auth.isAuthenticated()) return;
     this.exercisesLoading.set(true);

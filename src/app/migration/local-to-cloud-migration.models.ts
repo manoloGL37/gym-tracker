@@ -37,7 +37,7 @@ export interface MigrationLedger {
   postponed: boolean;
   createdAt: string;
   updatedAt: string;
-  /** Explicitly confirmed conversion values: legacy routines did not have these fields. */
+  /** Stable conversion values: legacy routines did not have these fields. Existing choices survive retries. */
   defaults: { targetReps: number; restSeconds: number };
   exercises: Record<string, ExerciseMapping>;
   routines: Record<string, ResourceMapping>;
