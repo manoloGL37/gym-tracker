@@ -71,12 +71,12 @@ const EMPTY_STATS: PeriodStats = {
 };
 
 const EMPTY_CHANGES: Record<ComparableMetric, number> = { workouts: 0, sets: 0, reps: 0, volume: 0 };
-const CHART_INK = '#52615c';
-const CHART_PLATE = '#65a30d';
-const CHART_PLATE_FILL = 'rgba(163, 230, 53, 0.18)';
-const CHART_CLOUD = '#246b9c';
-const CHART_CLOUD_FILL = 'rgba(36, 107, 156, 0.14)';
-const CHART_GRID = 'rgba(23, 32, 30, 0.08)';
+const CHART_INK = '#596577';
+const CHART_PLATE = '#db4829';
+const CHART_PLATE_FILL = 'rgba(219, 72, 41, 0.14)';
+const CHART_CLOUD = '#256dba';
+const CHART_CLOUD_FILL = 'rgba(37, 109, 186, 0.12)';
+const CHART_GRID = 'rgba(20, 25, 35, 0.08)';
 
 @Component({
   selector: 'app-stats',
