@@ -11,11 +11,14 @@ export class TranslationService {
   lang = this.langSignal.asReadonly();
 
   constructor() {
+    this.updateDocumentLanguage(this.langSignal());
     this.loadTranslations();
   }
 
   private getInitialLang(): Lang {
-    return (localStorage.getItem('lang') as Lang) || 'en';
+    const stored = localStorage.getItem('lang');
+    if (stored === 'en' || stored === 'es') return stored;
+    return document.documentElement.lang === 'es' ? 'es' : 'en';
   }
 
   private async loadTranslations() {
@@ -43,5 +46,10 @@ export class TranslationService {
   setLang(lang: Lang) {
     this.langSignal.set(lang);
     localStorage.setItem('lang', lang);
+    this.updateDocumentLanguage(lang);
+  }
+
+  private updateDocumentLanguage(lang: Lang): void {
+    document.documentElement.lang = lang;
   }
 }

@@ -1,229 +1,49 @@
 <main class="stats-page">
-  <header class="stats-header">
-    <div class="stats-header__top">
-      <div>
-        <p class="stats-header__kicker">{{ t.t('stats.trainingPulse') }}</p>
-        <h1>{{ t.t('stats.title') }}</h1>
-      </div>
-      <a routerLink="/exercises" class="history-link">{{ t.t('exerciseHistory.shortTitle') }}</a>
-    </div>
-
-    <div class="stats-controls">
-      <div class="segmented" role="group" [attr.aria-label]="t.t('stats.periodLabel')">
-        <button type="button" (click)="setPeriod('week')" [class.is-active]="selectedPeriod() === 'week'" [attr.aria-pressed]="selectedPeriod() === 'week'">
-          {{ t.t('stats.weekly') }}
-        </button>
-        <button type="button" (click)="setPeriod('month')" [class.is-active]="selectedPeriod() === 'month'" [attr.aria-pressed]="selectedPeriod() === 'month'">
-          {{ t.t('stats.monthly') }}
-        </button>
-      </div>
-
-    </div>
-
-    <div class="stats-header__context">
-      <span class="stats-range">{{ getPeriodLabel() }}</span>
-    </div>
-  </header>
+  <header class="stats-header"><div><span>RENDIMIENTO</span><h1>{{ t.t('stats.title') }}</h1><p>{{ getPeriodLabel() }}</p></div><div class="period-control" role="group" [attr.aria-label]="t.t('stats.periodLabel')"><button type="button" (click)="setPeriod('week')" [class.active]="selectedPeriod() === 'week'" [attr.aria-pressed]="selectedPeriod() === 'week'">{{ t.t('stats.weekly') }}</button><button type="button" (click)="setPeriod('month')" [class.active]="selectedPeriod() === 'month'" [attr.aria-pressed]="selectedPeriod() === 'month'">{{ t.t('stats.monthly') }}</button></div></header>
 
   <div class="stats-content">
-    <section *ngIf="error()" class="status-panel status-panel--error" role="alert">
-      <div>
-        <strong>{{ t.t('stats.loadErrorTitle') }}</strong>
-        <p>{{ error() }}</p>
-      </div>
-      <div class="status-actions">
-        <button type="button" class="primary-button" (click)="loadStats()">{{ t.t('stats.retry') }}</button>
-      </div>
-    </section>
-
-    <section *ngIf="loading()" class="loading-state" aria-live="polite" aria-busy="true">
-      <div class="loading-state__line"></div>
-      <div class="loading-state__line loading-state__line--short"></div>
-      <span>{{ t.t('stats.loading') }}</span>
-    </section>
+    <section *ngIf="error()" class="status-panel" role="alert"><div><strong>{{ t.t('stats.loadErrorTitle') }}</strong><p>{{ error() }}</p></div><button type="button" (click)="loadStats()">{{ t.t('stats.retry') }}</button></section>
+    <section *ngIf="loading()" class="loading-state" aria-live="polite" aria-busy="true"><i></i><i></i><span>{{ t.t('stats.loading') }}</span></section>
 
     <ng-container *ngIf="!loading() && !error()">
-      <section class="metric-band" [attr.aria-label]="t.t('stats.periodSummary')">
-        <article class="metric metric--lead">
-          <span class="metric__label">{{ t.t('stats.sessions') }}</span>
-          <strong class="metric__value">{{ currentStats().workoutCount | number:'1.0-0' }}</strong>
-          <span class="metric__comparison" *ngIf="hasPreviousValue('workouts'); else noWorkoutBase">
-            {{ previousStats().workoutCount | number:'1.0-0' }} {{ t.t('stats.previous') }} ·
-            {{ comparisonFor('workouts') > 0 ? '+' : '' }}{{ comparisonFor('workouts') | number:'1.0-1' }}%
-          </span>
-          <ng-template #noWorkoutBase><span class="metric__comparison">{{ t.t('stats.noPreviousBase') }}</span></ng-template>
-        </article>
-
-        <article class="metric metric--volume">
-          <span class="metric__label">{{ t.t('stats.totalVolume') }}</span>
-          <strong class="metric__value">{{ currentStats().totalVolume | number:'1.0-0' }} <small>kg</small></strong>
-          <span class="metric__comparison" *ngIf="hasPreviousValue('volume'); else noVolumeBase">
-            {{ previousStats().totalVolume | number:'1.0-0' }} kg {{ t.t('stats.previous') }} ·
-            {{ comparisonFor('volume') > 0 ? '+' : '' }}{{ comparisonFor('volume') | number:'1.0-1' }}%
-          </span>
-          <ng-template #noVolumeBase><span class="metric__comparison">{{ t.t('stats.noPreviousBase') }}</span></ng-template>
-        </article>
-
-        <article class="metric">
-          <span class="metric__label">{{ t.t('stats.sets') }}</span>
-          <strong class="metric__value">{{ currentStats().totalSets | number:'1.0-0' }}</strong>
-          <span class="metric__comparison" *ngIf="hasPreviousValue('sets'); else noSetsBase">
-            {{ previousStats().totalSets | number:'1.0-0' }} {{ t.t('stats.previous') }} ·
-            {{ comparisonFor('sets') > 0 ? '+' : '' }}{{ comparisonFor('sets') | number:'1.0-1' }}%
-          </span>
-          <ng-template #noSetsBase><span class="metric__comparison">{{ t.t('stats.noPreviousBase') }}</span></ng-template>
-        </article>
-
-        <article class="metric">
-          <span class="metric__label">{{ t.t('stats.reps') }}</span>
-          <strong class="metric__value">{{ currentStats().totalReps | number:'1.0-0' }}</strong>
-          <span class="metric__comparison" *ngIf="hasPreviousValue('reps'); else noRepsBase">
-            {{ previousStats().totalReps | number:'1.0-0' }} {{ t.t('stats.previous') }} ·
-            {{ comparisonFor('reps') > 0 ? '+' : '' }}{{ comparisonFor('reps') | number:'1.0-1' }}%
-          </span>
-          <ng-template #noRepsBase><span class="metric__comparison">{{ t.t('stats.noPreviousBase') }}</span></ng-template>
-        </article>
-      </section>
-
-      <section *ngIf="currentStats().workoutCount === 0" class="empty-state stats-empty">
-        <div class="empty-state__mark" aria-hidden="true">0</div>
-        <div>
-          <h2>{{ t.t('stats.noData') }}</h2>
-          <p>{{ t.t('stats.startTraining') }}</p>
+      <section *ngIf="currentStats().workoutCount > 0" class="performance-lead" [attr.aria-label]="t.t('stats.periodSummary')">
+        <article class="lead-measure"><span>{{ t.t('stats.sessions') }}</span><strong>{{ currentStats().workoutCount | number:'1.0-0' }}</strong><p *ngIf="hasPreviousValue('workouts'); else noWorkoutBase">{{ comparisonFor('workouts') > 0 ? '+' : '' }}{{ comparisonFor('workouts') | number:'1.0-1' }}% frente al periodo anterior</p><ng-template #noWorkoutBase><p>{{ t.t('stats.noPreviousBase') }}</p></ng-template></article>
+        <div class="support-measures">
+          <article><span>{{ t.t('stats.totalVolume') }}</span><strong>{{ currentStats().totalVolume | number:'1.0-0' }}<small>kg</small></strong><p *ngIf="hasPreviousValue('volume')">{{ comparisonFor('volume') > 0 ? '+' : '' }}{{ comparisonFor('volume') | number:'1.0-1' }}%</p></article>
+          <article><span>{{ t.t('stats.sets') }}</span><strong>{{ currentStats().totalSets | number:'1.0-0' }}</strong><p *ngIf="hasPreviousValue('sets')">{{ comparisonFor('sets') > 0 ? '+' : '' }}{{ comparisonFor('sets') | number:'1.0-1' }}%</p></article>
+          <article><span>{{ t.t('stats.reps') }}</span><strong>{{ currentStats().totalReps | number:'1.0-0' }}</strong><p *ngIf="hasPreviousValue('reps')">{{ comparisonFor('reps') > 0 ? '+' : '' }}{{ comparisonFor('reps') | number:'1.0-1' }}%</p></article>
         </div>
       </section>
 
-      <div class="analytics-grid">
-        <section *ngIf="currentStats().workoutCount > 0" class="chart-panel chart-panel--hero">
-          <div class="section-heading">
-            <div>
-              <p class="app-kicker">{{ t.t('stats.evolutionKicker') }}</p>
-              <h2>{{ t.t('stats.trainingEvolution') }}</h2>
-              <p>{{ t.t('stats.volumeEvolutionHelp') }}</p>
-            </div>
-            <strong class="chart-total">{{ currentStats().totalVolume | number:'1.0-0' }} <small>kg</small></strong>
-          </div>
-          <div class="chart-wrap chart-wrap--hero">
-            <canvas baseChart type="line" [data]="evolutionChartData()" [options]="evolutionChartOptions()" role="img" [attr.aria-label]="evolutionDescription()"></canvas>
-          </div>
-          <p class="chart-caption">{{ t.t('stats.onlyTrainingDays') }}</p>
-        </section>
+      <section *ngIf="currentStats().workoutCount === 0" class="stats-empty"><span aria-hidden="true">00</span><h2>{{ t.t('stats.noData') }}</h2><p>{{ t.t('stats.startTraining') }}</p><a routerLink="/select-routine">Empezar a entrenar</a></section>
 
-        <section class="chart-panel chart-panel--rhythm">
-          <div class="section-heading">
-            <div>
-              <p class="app-kicker">{{ t.t('stats.weeklyKicker') }}</p>
-              <h2>{{ t.t('stats.weeklyProgress') }}</h2>
-              <p>{{ t.t('stats.weeklyProgressHelp') }}</p>
-            </div>
-          </div>
+      <section *ngIf="currentStats().workoutCount > 0" class="trend-story">
+        <header><div><span>EVOLUCIÓN</span><h2>{{ t.t('stats.trainingEvolution') }}</h2><p>{{ t.t('stats.volumeEvolutionHelp') }}</p></div><strong>{{ currentStats().totalVolume | number:'1.0-0' }} <small>kg</small></strong></header>
+        <div class="chart-wrap chart-wrap--hero"><canvas baseChart type="line" [data]="evolutionChartData()" [options]="evolutionChartOptions()" role="img" [attr.aria-label]="evolutionDescription()"></canvas></div>
+        <p class="chart-caption">{{ t.t('stats.onlyTrainingDays') }}</p>
+      </section>
 
-          <form class="week-range" (ngSubmit)="applyWeeklyRange()">
-            <label>
-              <span>{{ t.t('stats.weekFrom') }}</span>
-              <input type="week" name="weekFrom" [(ngModel)]="weekFrom" required>
-            </label>
-            <label>
-              <span>{{ t.t('stats.weekTo') }}</span>
-              <input type="week" name="weekTo" [(ngModel)]="weekTo" required>
-            </label>
-            <button type="submit" class="secondary-button" [disabled]="weeklyLoading()">
-              {{ weeklyLoading() ? t.t('stats.loading') : t.t('stats.applyRange') }}
-            </button>
-          </form>
-
-          <p *ngIf="weeklyError()" class="inline-error" role="alert">{{ weeklyError() }}</p>
-          <div *ngIf="weeklyLoading()" class="exercise-loading" aria-live="polite" aria-busy="true">{{ t.t('stats.weeklyLoading') }}</div>
-          <div *ngIf="!weeklyLoading() && !weeklyError() && weeklyProgress().length === 0" class="exercise-empty">
-            <strong>{{ t.t('stats.weeklyNoData') }}</strong>
-          </div>
-          <div *ngIf="!weeklyLoading() && weeklyProgress().length > 0" class="chart-wrap chart-wrap--bars">
-            <canvas baseChart type="line" [data]="weeklyChartData()" [options]="weeklyChartOptions()" role="img" [attr.aria-label]="t.t('stats.weeklyDescription')"></canvas>
-          </div>
-          <ul *ngIf="weeklyProgress().length > 0" class="activity-list" [attr.aria-label]="t.t('stats.weeklyDetail')">
-            <li *ngFor="let point of weeklyProgress()">
-              <span>{{ weekRangeLabel(point) }}</span>
-              <span>{{ point.workouts }} {{ point.workouts === 1 ? t.t('stats.workout') : t.t('stats.workouts') }}</span>
-              <strong>{{ point.volume | number:'1.0-0' }} kg</strong>
-            </li>
-          </ul>
-        </section>
-      </div>
+      <section class="weekly-rhythm">
+        <header><span>RITMO SEMANAL</span><h2>{{ t.t('stats.weeklyProgress') }}</h2><p>{{ t.t('stats.weeklyProgressHelp') }}</p></header>
+        <form class="week-range" (ngSubmit)="applyWeeklyRange()"><label>{{ t.t('stats.weekFrom') }}<input type="week" name="weekFrom" [(ngModel)]="weekFrom" required></label><label>{{ t.t('stats.weekTo') }}<input type="week" name="weekTo" [(ngModel)]="weekTo" required></label><button type="submit" [disabled]="weeklyLoading()">{{ weeklyLoading() ? t.t('stats.loading') : t.t('stats.applyRange') }}</button></form>
+        <p *ngIf="weeklyError()" class="inline-error" role="alert">{{ weeklyError() }}</p>
+        <div *ngIf="weeklyLoading()" class="exercise-loading" aria-live="polite" aria-busy="true">{{ t.t('stats.weeklyLoading') }}</div>
+        <div *ngIf="!weeklyLoading() && !weeklyError() && weeklyProgress().length === 0" class="exercise-empty"><strong>{{ t.t('stats.weeklyNoData') }}</strong></div>
+        <div *ngIf="!weeklyLoading() && weeklyProgress().length > 0" class="chart-wrap chart-wrap--bars"><canvas baseChart type="line" [data]="weeklyChartData()" [options]="weeklyChartOptions()" role="img" [attr.aria-label]="t.t('stats.weeklyDescription')"></canvas></div>
+        <ol *ngIf="weeklyProgress().length > 0" class="activity-list" [attr.aria-label]="t.t('stats.weeklyDetail')"><li *ngFor="let point of weeklyProgress()"><span>{{ weekRangeLabel(point) }}</span><strong>{{ point.volume | number:'1.0-0' }} kg</strong><small>{{ point.workouts }} {{ point.workouts === 1 ? t.t('stats.workout') : t.t('stats.workouts') }}</small></li></ol>
+      </section>
 
       <section *ngIf="source() === 'cloud'" class="exercise-panel">
-        <div class="section-heading exercise-panel__heading">
-          <div>
-            <p class="app-kicker">{{ t.t('stats.exerciseKicker') }}</p>
-            <h2>{{ t.t('stats.exerciseProgression') }}</h2>
-            <p>{{ t.t('stats.exerciseProgressionHelp') }}</p>
-          </div>
-        </div>
-
-        <form class="exercise-search" (ngSubmit)="searchExercises()">
-          <label for="exercise-search">{{ t.t('stats.searchExercise') }}</label>
-          <div class="exercise-search__row">
-            <input id="exercise-search" name="exerciseSearch" type="search" [(ngModel)]="exerciseSearch" [placeholder]="t.t('stats.searchExercisePlaceholder')" autocomplete="off">
-            <button type="submit" class="primary-button" [disabled]="exercisesLoading()">
-              {{ exercisesLoading() ? t.t('stats.searching') : t.t('stats.search') }}
-            </button>
-          </div>
-        </form>
-
-        <p *ngIf="exerciseSearchError()" class="inline-error" role="alert">{{ exerciseSearchError() }}</p>
-        <p *ngIf="!exercisesLoading() && !exerciseSearchError() && exerciseResults().length === 0" class="exercise-hint">
-          {{ t.t('stats.exerciseSearchHint') }}
-        </p>
-
-        <div *ngIf="exerciseResults().length > 0" class="exercise-select">
-          <label for="exercise-result">{{ t.t('stats.chooseExercise') }}</label>
-          <select id="exercise-result" name="exerciseResult" [ngModel]="selectedExerciseId" (ngModelChange)="selectExercise($event)">
-            <option value="">{{ t.t('stats.chooseExercisePlaceholder') }}</option>
-            <option *ngFor="let exercise of exerciseResults()" [value]="exercise.id">{{ exerciseName(exercise) }}</option>
-          </select>
-        </div>
-
-        <div *ngIf="exerciseStatsLoading()" class="exercise-loading" aria-live="polite" aria-busy="true">
-          {{ t.t('stats.exerciseLoading') }}
-        </div>
-
-        <div *ngIf="exerciseStatsError()" class="status-panel status-panel--error" role="alert">
-          <p>{{ exerciseStatsError() }}</p>
-          <button type="button" class="secondary-button" (click)="loadExerciseStats()">{{ t.t('stats.retry') }}</button>
-        </div>
-
-        <ng-container *ngIf="exerciseStats() as selectedStats">
-          <div class="exercise-result-panel">
-            <div class="exercise-result-panel__title">
-              <div>
-                <span>{{ t.t('stats.selectedExercise') }}</span>
-                <h3>{{ selectedExercise() ? exerciseName(selectedExercise()!) : 'Ejercicio seleccionado' }}</h3>
-              </div>
-            </div>
-            <div class="exercise-metrics">
-              <span><strong>{{ selectedStats.totalSets | number:'1.0-0' }}</strong>{{ t.t('stats.sets') }}</span>
-              <span><strong>{{ selectedStats.totalReps | number:'1.0-0' }}</strong>{{ t.t('stats.reps') }}</span>
-              <span><strong>{{ selectedStats.totalVolume | number:'1.0-0' }} kg</strong>{{ t.t('stats.volume') }}</span>
-              <span><strong>{{ selectedStats.maxWeight | number:'1.0-1' }} kg</strong>{{ t.t('stats.maxWeight') }}</span>
-            </div>
-            <div *ngIf="exerciseWeeklyProgress().length === 0" class="exercise-empty">
-              <strong>{{ t.t('stats.exerciseNoData') }}</strong>
-              <p>{{ t.t('stats.exerciseNoDataHelp') }}</p>
-            </div>
-            <div *ngIf="exerciseWeeklyProgress().length > 0" class="chart-wrap chart-wrap--exercise">
-              <canvas baseChart type="line" [data]="exerciseChartData()" [options]="exerciseChartOptions()" role="img" [attr.aria-label]="exerciseEvolutionDescription()"></canvas>
-            </div>
-          </div>
-        </ng-container>
+        <header><span>POR EJERCICIO</span><h2>{{ t.t('stats.exerciseProgression') }}</h2><p>{{ t.t('stats.exerciseProgressionHelp') }}</p></header>
+        <form class="exercise-search" (ngSubmit)="searchExercises()"><label for="exercise-search">{{ t.t('stats.searchExercise') }}</label><div><input id="exercise-search" name="exerciseSearch" type="search" [(ngModel)]="exerciseSearch" [placeholder]="t.t('stats.searchExercisePlaceholder')" autocomplete="off"><button type="submit" [disabled]="exercisesLoading()">{{ exercisesLoading() ? t.t('stats.searching') : t.t('stats.search') }}</button></div></form>
+        <p *ngIf="exerciseSearchError()" class="inline-error" role="alert">{{ exerciseSearchError() }}</p><p *ngIf="!exercisesLoading() && !exerciseSearchError() && exerciseResults().length === 0" class="exercise-hint">{{ t.t('stats.exerciseSearchHint') }}</p>
+        <label *ngIf="exerciseResults().length > 0" class="exercise-select" for="exercise-result">{{ t.t('stats.chooseExercise') }}<select id="exercise-result" name="exerciseResult" [ngModel]="selectedExerciseId" (ngModelChange)="selectExercise($event)"><option value="">{{ t.t('stats.chooseExercisePlaceholder') }}</option><option *ngFor="let exercise of exerciseResults()" [value]="exercise.id">{{ exerciseName(exercise) }}</option></select></label>
+        <div *ngIf="exerciseStatsLoading()" class="exercise-loading" aria-live="polite" aria-busy="true">{{ t.t('stats.exerciseLoading') }}</div>
+        <div *ngIf="exerciseStatsError()" class="status-panel" role="alert"><p>{{ exerciseStatsError() }}</p><button type="button" (click)="loadExerciseStats()">{{ t.t('stats.retry') }}</button></div>
+        <ng-container *ngIf="exerciseStats() as selectedStats"><div class="exercise-result-panel"><h3>{{ selectedExercise() ? exerciseName(selectedExercise()!) : 'Ejercicio seleccionado' }}</h3><div class="exercise-metrics"><span><strong>{{ selectedStats.maxWeight | number:'1.0-1' }}<small>kg</small></strong>{{ t.t('stats.maxWeight') }}</span><span><strong>{{ selectedStats.totalVolume | number:'1.0-0' }}<small>kg</small></strong>{{ t.t('stats.volume') }}</span><span><strong>{{ selectedStats.totalSets | number:'1.0-0' }}</strong>{{ t.t('stats.sets') }}</span><span><strong>{{ selectedStats.totalReps | number:'1.0-0' }}</strong>{{ t.t('stats.reps') }}</span></div><div *ngIf="exerciseWeeklyProgress().length === 0" class="exercise-empty"><strong>{{ t.t('stats.exerciseNoData') }}</strong><p>{{ t.t('stats.exerciseNoDataHelp') }}</p></div><div *ngIf="exerciseWeeklyProgress().length > 0" class="chart-wrap chart-wrap--exercise"><canvas baseChart type="line" [data]="exerciseChartData()" [options]="exerciseChartOptions()" role="img" [attr.aria-label]="exerciseEvolutionDescription()"></canvas></div></div></ng-container>
       </section>
 
-      <section *ngIf="source() === 'local'" class="local-history-callout">
-        <div>
-          <p class="app-kicker">{{ t.t('stats.localHistoryKicker') }}</p>
-          <h2>{{ t.t('stats.localExerciseHistory') }}</h2>
-          <p>{{ t.t('stats.localExerciseHistoryHelp') }}</p>
-        </div>
-        <a routerLink="/exercises" class="secondary-button">{{ t.t('stats.openLocalHistory') }}</a>
-      </section>
+      <section *ngIf="source() === 'local'" class="local-history-callout"><div><h2>{{ t.t('stats.localExerciseHistory') }}</h2><p>{{ t.t('stats.localExerciseHistoryHelp') }}</p></div><a routerLink="/exercises">{{ t.t('stats.openLocalHistory') }}</a></section>
     </ng-container>
   </div>
 </main>

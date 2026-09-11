@@ -1,11 +1,25 @@
-<div class="app-shell flex flex-col overflow-x-hidden" style="min-height: 100dvh;">
+<div class="app-shell">
+  <a class="skip-link" href="#app-content">{{ t.t('nav.skip') }}</a>
   <app-offline-indicator></app-offline-indicator>
-  <main class="flex-1 overflow-x-hidden" style="padding-bottom: var(--bottom-nav-total-height);"><router-outlet></router-outlet></main>
-  <nav class="bottom-nav fixed bottom-0 left-0 right-0 flex items-center z-10" aria-label="Navegación principal" style="height: var(--bottom-nav-total-height); padding-bottom: env(safe-area-inset-bottom);">
-    <a routerLink="/home" routerLinkActive="active-nav-tab" [routerLinkActiveOptions]="{ exact: true }" class="nav-item flex flex-col items-center justify-center flex-1 h-full py-2"><svg class="w-5 h-5 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0 7-7 7 7M5 10v10a1 1 0 001 1h3m10-11 2 2m-2-2v10a1 1 0 01-1 1h-3"/></svg><span>{{ t.t('home.title') }}</span></a>
-    <a routerLink="/routines" routerLinkActive="active-nav-tab" class="nav-item flex flex-col items-center justify-center flex-1 h-full py-2"><svg class="w-5 h-5 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2"/></svg><span>{{ t.t('routines.title') }}</span></a>
-    <a routerLink="/select-routine" routerLinkActive="active-nav-tab" class="nav-item nav-item--train flex flex-col items-center justify-center flex-1 h-full py-2" aria-label="Iniciar entrenamiento"><span class="train-glyph" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg></span><span>Entrenar</span></a>
-    <a routerLink="/calendar" routerLinkActive="active-nav-tab" class="nav-item flex flex-col items-center justify-center flex-1 h-full py-2"><svg class="w-5 h-5 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg><span>{{ t.t('calendar.title') }}</span></a>
-    <a routerLink="/stats" routerLinkActive="active-nav-tab" class="nav-item flex flex-col items-center justify-center flex-1 h-full py-2"><svg class="w-5 h-5 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 19V9m5 10V5m5 14v-7m5 7V3"/></svg><span>{{ t.t('stats.title') }}</span></a>
+
+  <header class="desktop-masthead">
+    <a routerLink="/home" class="brand-lockup" aria-label="Gym Tracker, inicio"><span aria-hidden="true">GT</span><strong>Gym Tracker</strong></a>
+    <nav aria-label="Navegación principal">
+      <a routerLink="/home" routerLinkActive="active-nav-tab" [routerLinkActiveOptions]="{ exact: true }">{{ t.t('home.title') }}</a>
+      <a routerLink="/routines" routerLinkActive="active-nav-tab">{{ t.t('routines.title') }}</a>
+      <a routerLink="/calendar" routerLinkActive="active-nav-tab">{{ t.t('calendar.title') }}</a>
+      <a routerLink="/stats" routerLinkActive="active-nav-tab">{{ t.t('stats.title') }}</a>
+    </nav>
+    <a routerLink="/select-routine" class="desktop-train">{{ t.t('nav.train') }} <span aria-hidden="true">↗</span></a>
+  </header>
+
+  <main id="app-content"><router-outlet></router-outlet></main>
+
+  <nav class="mobile-dock" aria-label="Navegación principal">
+    <a routerLink="/home" routerLinkActive="active-nav-tab" [routerLinkActiveOptions]="{ exact: true }"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11.5 12 5l8 6.5V20H4Z"/><path d="M9 20v-6h6v6"/></svg><span>{{ t.t('home.title') }}</span></a>
+    <a routerLink="/routines" routerLinkActive="active-nav-tab"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4h12v16H6z"/><path d="M9 8h6M9 12h6M9 16h4"/></svg><span>{{ t.t('routines.title') }}</span></a>
+    <a routerLink="/select-routine" routerLinkActive="active-nav-tab" class="mobile-dock__train" [attr.aria-label]="t.t('nav.train')"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M12 5v14"/></svg><span>{{ t.t('nav.train') }}</span></a>
+    <a routerLink="/calendar" routerLinkActive="active-nav-tab"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 6h14v14H5zM8 3v6m8-6v6M5 10h14"/></svg><span>{{ t.t('calendar.title') }}</span></a>
+    <a routerLink="/stats" routerLinkActive="active-nav-tab"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19V11m7 8V5m7 14V8"/></svg><span>{{ t.t('stats.title') }}</span></a>
   </nav>
 </div>

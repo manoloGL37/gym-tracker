@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, ChangeDetectorRef, Component, inject, NgZone, OnDestroy, OnInit } from '@angular/core';
+import { AfterViewInit, ChangeDetectionStrategy, ChangeDetectorRef, Component, ElementRef, inject, NgZone, OnDestroy, OnInit, ViewChild } from '@angular/core';
 import { Router } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
@@ -19,7 +19,8 @@ type SetBenchmark = { reps: number | null; weight: number | null };
 type BenchmarkIndex = Map<string, Map<number, SetBenchmark>>;
 
 @Component({ selector: 'app-training', standalone: true, imports: [FormsModule], templateUrl: './training.component.html', styleUrls: ['./training.component.css'], changeDetection: ChangeDetectionStrategy.OnPush })
-export class TrainingComponent implements OnInit, OnDestroy {
+export class TrainingComponent implements OnInit, AfterViewInit, OnDestroy {
+  @ViewChild('collapseSentinel', { static: true }) collapseSentinel!: ElementRef<HTMLElement>;
   training: ActiveTraining | null = null;
   cloudTraining: CloudActiveTraining | null = null;
   loading = true;
@@ -30,7 +31,10 @@ export class TrainingComponent implements OnInit, OnDestroy {
   cloudError: string | null = null;
   cloudSaving = false;
   now = Date.now();
+  headerCollapsed = false;
   private clock: ReturnType<typeof setInterval> | null = null;
+  private collapseObserver: IntersectionObserver | null = null;
+  private dialogTrigger: HTMLElement | null = null;
   private readonly zone = inject(NgZone);
   private readonly cdr = inject(ChangeDetectorRef);
   t = inject(TranslationService);
@@ -80,9 +84,20 @@ export class TrainingComponent implements OnInit, OnDestroy {
     this.cdr.markForCheck();
   }
 
+  ngAfterViewInit(): void {
+    if (typeof IntersectionObserver === 'undefined') return;
+    this.collapseObserver = new IntersectionObserver(([entry]) => {
+      this.headerCollapsed = !entry.isIntersecting;
+      this.cdr.markForCheck();
+    }, { threshold: 0 });
+    this.collapseObserver.observe(this.collapseSentinel.nativeElement);
+  }
+
   ngOnDestroy(): void {
     if (this.clock) clearInterval(this.clock);
     this.clock = null;
+    this.collapseObserver?.disconnect();
+    this.collapseObserver = null;
   }
 
   private startClock(): void {
@@ -116,6 +131,18 @@ export class TrainingComponent implements OnInit, OnDestroy {
 
   exerciseHasPendingSets(exercise: ActiveTraining['exercises'][number]): boolean {
     return exercise.sets.some(set => set.reps === null || set.weight === null);
+  }
+
+  completedLocalExerciseSets(exercise: ActiveTraining['exercises'][number]): number {
+    return exercise.sets.filter(set => this.isLocalSetComplete(set)).length;
+  }
+
+  isNextLocalSet(exercise: ActiveTraining['exercises'][number], setIndex: number): boolean {
+    return !this.isLocalSetComplete(exercise.sets[setIndex]) && exercise.sets.slice(0, setIndex).every(set => this.isLocalSetComplete(set));
+  }
+
+  isNextCloudSet(exercise: CloudActiveExercise, setIndex: number): boolean {
+    return !exercise.sets[setIndex]?.persisted && exercise.sets.slice(0, setIndex).every(set => !!set.persisted);
   }
 
   exerciseNumber(index: number): string { return (index + 1).toString().padStart(2, '0'); }
@@ -257,10 +284,12 @@ export class TrainingComponent implements OnInit, OnDestroy {
 
   hasIncompleteSets(): boolean { return this.training?.exercises.some(exercise => exercise.sets.some(set => set.reps === null || set.weight === null)) ?? false; }
   hasUnsubmittedCloudSets(): boolean { return this.cloudTraining?.exercises.some(exercise => exercise.sets.some(set => !set.persisted && (set.reps !== null || set.weight !== null || set.rpe !== null))) ?? false; }
-  requestFinish() { this.showConfirmFinish = true; }
-  cancelFinish() { this.showConfirmFinish = false; }
-  requestCancellation() { this.showConfirmCancel = true; }
-  keepTraining() { this.showConfirmCancel = false; }
+  requestFinish(event?: Event) { this.dialogTrigger = event?.currentTarget as HTMLElement | null; this.showConfirmFinish = true; }
+  cancelFinish() { this.showConfirmFinish = false; this.restoreDialogFocus(); }
+  requestCancellation(event?: Event) { this.dialogTrigger = event?.currentTarget as HTMLElement | null; this.showConfirmCancel = true; }
+  keepTraining() { this.showConfirmCancel = false; this.restoreDialogFocus(); }
+  chooseRoutine() { void this.router.navigate(['/select-routine']); }
+  private restoreDialogFocus(): void { const trigger = this.dialogTrigger; this.dialogTrigger = null; queueMicrotask(() => trigger?.focus()); }
   async confirmCancellation(): Promise<void> {
     if (this.training) {
       await ActiveTrainingRepository.clear();
