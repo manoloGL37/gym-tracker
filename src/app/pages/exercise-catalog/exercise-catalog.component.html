@@ -1,128 +1,36 @@
-<div class="catalog-page flex flex-col bg-gray-50" style="min-height: 100dvh;">
-  <div class="app-page-header">
-    <div class="flex items-center justify-between gap-3">
-      <div>
-        <div class="app-kicker">Biblioteca</div><h1>Catálogo de ejercicios</h1>
-        <p>Gestiona los ejercicios disponibles para tus rutinas.</p>
-      </div>
-      <a routerLink="/settings" class="p-2 rounded-lg bg-white/15 text-white text-sm font-bold">Ajustes</a>
-    </div>
-  </div>
-
-  <div class="px-4 pt-4 pb-8">
+<div class="catalog-page">
+  <header class="catalog-head"><div><span>BIBLIOTECA DE MOVIMIENTO</span><h1>Ejercicios</h1></div><a routerLink="/settings">Ajustes</a></header>
+  <main>
     @if (view() === 'guest') {
-      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm text-center py-12 px-6">
-        <h2 class="font-black text-gray-900 text-lg">El catálogo requiere una cuenta</h2>
-        <p class="text-sm text-gray-500 mt-2">Puedes seguir creando y usando rutinas sin iniciar sesión.</p>
-        <a routerLink="/login" class="inline-block mt-4 rounded-lg bg-orange-600 px-4 py-3 font-bold text-white">Iniciar sesión</a>
-      </div>
+      <section class="catalog-guest"><span aria-hidden="true">GT</span><div><h2>El catálogo requiere una cuenta</h2><p>Puedes seguir creando y usando rutinas sin iniciar sesión.</p><a routerLink="/login">Iniciar sesión</a></div></section>
     } @else if (view() === 'catalog') {
-      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-4">
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          <input [(ngModel)]="search" (keyup.enter)="applyFilters()" placeholder="Buscar" class="rounded-lg border border-gray-300 px-3 py-2" />
-          @if (filterOptions(); as options) {
-            <select [(ngModel)]="category" class="rounded-lg border border-gray-300 px-3 py-2"><option value="">Todas las categorías</option>@for (value of options.categories; track value) { <option [value]="value">{{ value }}</option> }</select>
-            <select [(ngModel)]="equipment" class="rounded-lg border border-gray-300 px-3 py-2"><option value="">Todo el equipamiento</option>@for (value of options.equipment; track value) { <option [value]="value">{{ value }}</option> }</select>
-            <select [(ngModel)]="muscleGroup" class="rounded-lg border border-gray-300 px-3 py-2"><option value="">Todos los grupos musculares</option>@for (value of options.muscleGroups; track value) { <option [value]="value">{{ value }}</option> }</select>
-            <select [(ngModel)]="targetMuscle" class="rounded-lg border border-gray-300 px-3 py-2"><option value="">Todos los músculos objetivo</option>@for (value of options.targetMuscles; track value) { <option [value]="value">{{ value }}</option> }</select>
-          } @else {
-            <input [(ngModel)]="category" placeholder="Categoría" [disabled]="filtersLoading()" class="rounded-lg border border-gray-300 px-3 py-2" />
-            <input [(ngModel)]="equipment" placeholder="Equipamiento" [disabled]="filtersLoading()" class="rounded-lg border border-gray-300 px-3 py-2" />
-            <input [(ngModel)]="muscleGroup" placeholder="Grupo muscular" [disabled]="filtersLoading()" class="rounded-lg border border-gray-300 px-3 py-2" />
-            <input [(ngModel)]="targetMuscle" placeholder="Músculo objetivo" [disabled]="filtersLoading()" class="rounded-lg border border-gray-300 px-3 py-2" />
-          }
-          <select [(ngModel)]="pageSize" class="rounded-lg border border-gray-300 px-3 py-2">
-            <option [ngValue]="20">20 por página</option>
-            <option [ngValue]="50">50 por página</option>
-            <option [ngValue]="100">100 por página</option>
-          </select>
-        </div>
-        <div class="flex gap-2 mt-3">
-          <button (click)="applyFilters()" [disabled]="loading()" class="flex-1 rounded-lg bg-orange-600 px-3 py-2 font-bold text-white disabled:opacity-50">Buscar</button>
-          <button (click)="openCreate()" class="flex-1 rounded-lg bg-gray-800 px-3 py-2 font-bold text-white">Nuevo personalizado</button>
-        </div>
-      </div>
+      <section class="search-stage" aria-labelledby="search-heading"><label id="search-heading" for="catalog-search">Busca un movimiento</label><div><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4 4"/></svg><input id="catalog-search" [(ngModel)]="search" (keyup.enter)="applyFilters()" type="search" name="search" placeholder="Press, sentadilla, remo…" autocomplete="off"><button type="button" (click)="applyFilters()" [disabled]="loading()">Buscar</button></div><footer><span>@if (page(); as result) { {{ result.totalElements }} resultados }</span><button type="button" (click)="openCreate()">Crear personalizado <b aria-hidden="true">+</b></button></footer></section>
 
-      @if (error()) {
-        <div class="rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700 mb-4" role="alert">
-          {{ error() }} <button (click)="loadPage(pageNumber)" class="font-bold underline">Reintentar</button>
-        </div>
-      }
-      @if (filtersError()) {
-        <p class="text-xs text-amber-700 mb-3">{{ filtersError() }} Puedes seguir buscando por texto.</p>
-      }
-      @if (loading()) {
-        <div class="text-center py-12 text-gray-500">Cargando catálogo…</div>
-      } @else {
-        @if (page(); as result) {
-        @if (!result.content.length) {
-          <div class="bg-white rounded-2xl border border-gray-100 shadow-sm text-center py-12 text-gray-500">No hay ejercicios para estos filtros.</div>
+      <details class="filter-drawer"><summary>Filtros <span>Categoría, material y músculo</span></summary><div class="filter-grid">
+        @if (filterOptions(); as options) {
+          <label>Categoría<select [(ngModel)]="category" name="category"><option value="">Todas</option>@for (value of options.categories; track value) { <option [value]="value">{{ value }}</option> }</select></label>
+          <label>Equipamiento<select [(ngModel)]="equipment" name="equipment"><option value="">Todo</option>@for (value of options.equipment; track value) { <option [value]="value">{{ value }}</option> }</select></label>
+          <label>Grupo muscular<select [(ngModel)]="muscleGroup" name="muscleGroup"><option value="">Todos</option>@for (value of options.muscleGroups; track value) { <option [value]="value">{{ value }}</option> }</select></label>
+          <label>Músculo objetivo<select [(ngModel)]="targetMuscle" name="targetMuscle"><option value="">Todos</option>@for (value of options.targetMuscles; track value) { <option [value]="value">{{ value }}</option> }</select></label>
         } @else {
-          <div class="space-y-3">
-            @for (exercise of result.content; track exercise.id) {
-              <button (click)="openDetail(exercise.id)" class="w-full text-left bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
-                <div class="flex justify-between gap-3">
-                  <div>
-                    <div class="font-black text-gray-900">{{ nameFor(exercise) }}</div>
-                    <div class="text-xs text-gray-500 mt-1">{{ exercise.category || 'Sin categoría' }} · {{ exercise.muscleGroup || 'Sin grupo muscular' }}</div>
-                  </div>
-                  <span [class.bg-emerald-100]="exercise.source === 'USER'" [class.text-emerald-800]="exercise.source === 'USER'" [class.bg-gray-100]="exercise.source !== 'USER'" class="h-fit rounded-full px-2 py-1 text-xs font-bold">
-                    {{ exercise.source === 'USER' ? 'Personalizado' : 'Catálogo' }}
-                  </span>
-                </div>
-              </button>
-            }
-          </div>
+          <label>Categoría<input [(ngModel)]="category" name="category" [disabled]="filtersLoading()" autocomplete="off"></label><label>Equipamiento<input [(ngModel)]="equipment" name="equipment" [disabled]="filtersLoading()" autocomplete="off"></label><label>Grupo muscular<input [(ngModel)]="muscleGroup" name="muscleGroup" [disabled]="filtersLoading()" autocomplete="off"></label><label>Músculo objetivo<input [(ngModel)]="targetMuscle" name="targetMuscle" [disabled]="filtersLoading()" autocomplete="off"></label>
         }
-        <div class="flex items-center justify-between mt-5">
-          <button (click)="previousPage()" [disabled]="loading() || result.page === 0" class="rounded-lg border border-gray-300 px-3 py-2 font-bold disabled:opacity-40">Anterior</button>
-          <span class="text-sm text-gray-600">Página {{ result.page + 1 }} de {{ result.totalPages }} · {{ result.totalElements }}</span>
-          <button (click)="nextPage()" [disabled]="loading() || result.page + 1 >= result.totalPages" class="rounded-lg border border-gray-300 px-3 py-2 font-bold disabled:opacity-40">Siguiente</button>
-        </div>
-        }
-      }
+        <label>Por página<select [(ngModel)]="pageSize" name="pageSize"><option [ngValue]="20">20</option><option [ngValue]="50">50</option><option [ngValue]="100">100</option></select></label>
+        <button type="button" (click)="applyFilters()">Aplicar filtros</button>
+      </div></details>
+
+      @if (error()) { <p class="catalog-error" role="alert">{{ error() }} <button type="button" (click)="loadPage(pageNumber)">Reintentar</button></p> }
+      @if (filtersError()) { <p class="filter-error">{{ filtersError() }} Puedes seguir buscando por texto.</p> }
+      @if (loading()) { <div class="catalog-loading" aria-live="polite" aria-busy="true"><i></i><i></i><i></i><i></i><span>Cargando catálogo…</span></div> }
+      @else { @if (page(); as result) {
+        @if (!result.content.length) { <section class="catalog-empty"><h2>Ningún ejercicio coincide</h2><p>Prueba otra palabra o elimina alguno de los filtros.</p><button type="button" (click)="openCreate()">Crear un ejercicio personalizado</button></section> }
+        @else { <section class="result-list" aria-label="Resultados">@for (exercise of result.content; track exercise.id; let i = $index) { <button type="button" (click)="openDetail(exercise.id)"><span>{{ (result.page * result.size) + i + 1 | number:'2.0-0' }}</span><div><strong>{{ nameFor(exercise) }}</strong><small>{{ exercise.category || 'Sin categoría' }} · {{ exercise.muscleGroup || 'Grupo muscular sin indicar' }}</small></div><b>{{ exercise.source === 'USER' ? 'Personal' : 'Catálogo' }}</b><i aria-hidden="true">→</i></button> }</section> }
+        <nav class="catalog-pagination" aria-label="Páginas del catálogo"><button type="button" (click)="previousPage()" [disabled]="loading() || result.page === 0">Anterior</button><span>{{ result.page + 1 }} / {{ result.totalPages }}</span><button type="button" (click)="nextPage()" [disabled]="loading() || result.page + 1 >= result.totalPages">Siguiente</button></nav>
+      } }
     } @else if (view() === 'detail') {
-      @if (detail(); as exercise) {
-      <button (click)="backToCatalog()" class="mb-4 text-sm font-bold text-orange-700">← Volver al catálogo</button>
-      @if (error()) { <p class="rounded-xl bg-red-50 p-3 text-sm text-red-700 mb-3">{{ error() }}</p> }
-      <article class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-        <div class="flex justify-between gap-3">
-          <div>
-            <h2 class="text-2xl font-black text-gray-900">{{ nameForDetail }}</h2>
-            <p class="text-sm text-gray-500 mt-1">{{ exercise.source === 'USER' ? 'Ejercicio personalizado' : 'Ejercicio del catálogo' }}</p>
-          </div>
-          <span class="rounded-full bg-gray-100 px-2 py-1 h-fit text-xs font-bold">{{ exercise.source === 'USER' ? 'Personalizado' : 'Catálogo' }}</span>
-        </div>
-        @if (detailTranslation?.instructions) { <p class="mt-4 text-sm text-gray-700 whitespace-pre-line">{{ detailTranslation?.instructions }}</p> }
-        <dl class="grid grid-cols-2 gap-3 mt-5 text-sm">
-          <div><dt class="text-gray-500">Categoría</dt><dd class="font-semibold">{{ exercise.category || '—' }}</dd></div>
-          <div><dt class="text-gray-500">Equipamiento</dt><dd class="font-semibold">{{ exercise.equipment || '—' }}</dd></div>
-          <div><dt class="text-gray-500">Grupo muscular</dt><dd class="font-semibold">{{ exercise.muscleGroup || '—' }}</dd></div>
-          <div><dt class="text-gray-500">Músculo objetivo</dt><dd class="font-semibold">{{ exercise.targetMuscle || '—' }}</dd></div>
-        </dl>
-        @if (exercise.secondaryMuscles?.length) { <p class="mt-4 text-sm text-gray-600">Secundarios: {{ exercise.secondaryMuscles?.join(', ') }}</p> }
-        <div class="flex gap-2 mt-6">
-          @if (canEdit(exercise)) { <button (click)="openEdit(exercise)" class="flex-1 rounded-lg bg-orange-600 px-3 py-3 font-bold text-white">Editar</button> }
-          @if (canDelete(exercise)) { <button (click)="delete(exercise)" [disabled]="saving()" class="flex-1 rounded-lg bg-red-600 px-3 py-3 font-bold text-white disabled:opacity-50">Eliminar</button> }
-        </div>
-      </article>
-      }
+      @if (detail(); as exercise) { <section class="exercise-detail"><button type="button" (click)="backToCatalog()">← Volver al catálogo</button>@if (error()) { <p class="catalog-error" role="alert">{{ error() }}</p> }<header><span>{{ exercise.source === 'USER' ? 'PERSONALIZADO' : 'CATÁLOGO' }}</span><h1>{{ nameForDetail }}</h1></header>@if (detailTranslation?.instructions) { <p class="detail-instructions">{{ detailTranslation?.instructions }}</p> }<dl><div><dt>Categoría</dt><dd>{{ exercise.category || '—' }}</dd></div><div><dt>Equipamiento</dt><dd>{{ exercise.equipment || '—' }}</dd></div><div><dt>Grupo muscular</dt><dd>{{ exercise.muscleGroup || '—' }}</dd></div><div><dt>Músculo objetivo</dt><dd>{{ exercise.targetMuscle || '—' }}</dd></div></dl>@if (exercise.secondaryMuscles?.length) { <p class="detail-secondary">Secundarios: {{ exercise.secondaryMuscles?.join(', ') }}</p> }<footer>@if (canEdit(exercise)) { <button type="button" (click)="openEdit(exercise)">Editar ejercicio</button> }@if (canDelete(exercise)) { <button type="button" (click)="delete(exercise)" [disabled]="saving()">Eliminar</button> }</footer></section> }
     } @else if (view() === 'form') {
-      <button (click)="cancelForm()" class="mb-4 text-sm font-bold text-orange-700">← Cancelar</button>
-      <form (ngSubmit)="save()" class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-3">
-        <h2 class="text-xl font-black text-gray-900">{{ editingExercise ? 'Editar ejercicio' : 'Nuevo ejercicio personalizado' }}</h2>
-        <p class="text-xs text-gray-500">Si pierdes la conexión al guardar, podrás reintentarlo sin crear duplicados.</p>
-        <label class="block text-sm font-bold text-gray-700">Idioma<input [(ngModel)]="draft.language" name="language" required maxlength="10" [readonly]="editingExercise !== null" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2" /></label>
-        <label class="block text-sm font-bold text-gray-700">Nombre<input [(ngModel)]="draft.name" name="name" required maxlength="255" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2" /></label>
-        <label class="block text-sm font-bold text-gray-700">Instrucciones<textarea [(ngModel)]="draft.instructions" name="instructions" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"></textarea></label>
-        <label class="block text-sm font-bold text-gray-700">Categoría<input [(ngModel)]="draft.category" name="category" maxlength="100" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2" /></label>
-        <label class="block text-sm font-bold text-gray-700">Equipamiento<input [(ngModel)]="draft.equipment" name="equipment" maxlength="100" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2" /></label>
-        <label class="block text-sm font-bold text-gray-700">Grupo muscular<input [(ngModel)]="draft.muscleGroup" name="muscleGroup" maxlength="100" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2" /></label>
-        <label class="block text-sm font-bold text-gray-700">Músculo objetivo<input [(ngModel)]="draft.targetMuscle" name="targetMuscle" maxlength="100" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2" /></label>
-        <label class="block text-sm font-bold text-gray-700">Músculos secundarios<input [(ngModel)]="draft.secondaryMuscles" name="secondaryMuscles" placeholder="Separados por comas" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2" /></label>
-        @if (error()) { <p class="rounded-xl bg-red-50 p-3 text-sm text-red-700" role="alert">{{ error() }}</p> }
-        <button type="submit" [disabled]="saving()" class="w-full rounded-lg bg-orange-600 px-4 py-3 font-bold text-white disabled:opacity-50">{{ saving() ? 'Guardando…' : 'Guardar' }}</button>
-      </form>
+      <section class="exercise-form"><button type="button" (click)="cancelForm()">← Cancelar</button><header><span>EJERCICIO PROPIO</span><h1>{{ editingExercise ? 'Editar movimiento' : 'Nuevo movimiento' }}</h1><p>Describe lo necesario para reconocerlo al construir una rutina.</p></header><form (ngSubmit)="save()" autocomplete="off"><label>Idioma<input [(ngModel)]="draft.language" name="language" required maxlength="10" [readonly]="editingExercise !== null" autocomplete="off"></label><label class="field-wide">Nombre<input [(ngModel)]="draft.name" name="name" required maxlength="255" autocomplete="off"></label><label class="field-wide">Instrucciones<textarea [(ngModel)]="draft.instructions" name="instructions" rows="4" autocomplete="off"></textarea></label><label>Categoría<input [(ngModel)]="draft.category" name="category" maxlength="100" autocomplete="off"></label><label>Equipamiento<input [(ngModel)]="draft.equipment" name="equipment" maxlength="100" autocomplete="off"></label><label>Grupo muscular<input [(ngModel)]="draft.muscleGroup" name="muscleGroup" maxlength="100" autocomplete="off"></label><label>Músculo objetivo<input [(ngModel)]="draft.targetMuscle" name="targetMuscle" maxlength="100" autocomplete="off"></label><label class="field-wide">Músculos secundarios<input [(ngModel)]="draft.secondaryMuscles" name="secondaryMuscles" placeholder="Separados por comas…" autocomplete="off"></label>@if (error()) { <p class="catalog-error field-wide" role="alert">{{ error() }}</p> }<button class="field-wide" type="submit" [disabled]="saving()">{{ saving() ? 'Guardando…' : 'Guardar ejercicio' }}</button></form></section>
     }
-  </div>
+  </main>
 </div>

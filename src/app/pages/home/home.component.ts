@@ -45,6 +45,7 @@ export class HomeComponent {
   weekVolume = 0;
   latestWeight: BodyWeightEntry | null = null;
   routineShortcuts: HomeRoutine[] = [];
+  loading = true;
   readonly today = new Date();
   private readonly auth = inject(AuthSessionService);
   private readonly migration = inject(LocalToCloudMigrationService);
@@ -76,6 +77,7 @@ export class HomeComponent {
   }
 
   private async loadDashboard(): Promise<void> {
+    this.loading = true;
     const [workouts, activeTraining, cloudActiveTraining, weightEntries, routines] = await Promise.all([
       WorkoutHistoryRepository.getAll(),
       ActiveTrainingRepository.get().then(training => training ?? null),
@@ -90,6 +92,7 @@ export class HomeComponent {
     this.latestWeight = weightEntries[0] ?? null;
     if (!accountId) {
       this.useStoredDashboard(workouts, routines);
+      this.loading = false;
       return;
     }
 
@@ -119,9 +122,11 @@ export class HomeComponent {
         ...accountRoutines.content.map(routine => ({ id: routine.id, name: routine.name, exerciseCount: null })),
         ...visibleStored,
       ].slice(0, 3);
+      this.loading = false;
     } catch {
       // A temporary account failure is not an empty dashboard.
       this.useStoredDashboard(workouts, routines);
+      this.loading = false;
     }
   }
 

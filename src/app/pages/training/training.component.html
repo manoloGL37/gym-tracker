@@ -1,16 +1,77 @@
 <div class="session-page">
-  <header class="session-commandbar" aria-label="Estado del entrenamiento">
-    <div class="session-commandbar__top"><div><span class="session-eyebrow">Sesión en curso</span><h1>{{ training?.routineName || cloudTraining?.routineName || 'Preparando entrenamiento' }}</h1></div><div class="session-timer" aria-label="Tiempo transcurrido">{{ elapsed() }}</div></div>
-    <div class="session-progress"><span>{{ completedSetCount() }} / {{ totalSetCount() }} series</span><div role="progressbar" aria-label="Progreso de series" aria-valuemin="0" aria-valuemax="100" [attr.aria-valuenow]="progressPercentage()"><i [style.width.%]="progressPercentage()"></i></div><span>{{ progressPercentage() }}%</span></div>
+  <div #collapseSentinel class="collapse-sentinel" aria-hidden="true"></div>
+  <header class="session-commandbar" [class.session-commandbar--collapsed]="headerCollapsed" aria-label="Estado del entrenamiento">
+    <div class="commandbar-title"><span>Sesión en curso</span><h1>{{ training?.routineName || cloudTraining?.routineName || 'Preparando entrenamiento' }}</h1></div>
+    <div class="session-timer" aria-label="Tiempo transcurrido"><span>TIEMPO</span><strong>{{ elapsed() }}</strong></div>
+    <div class="session-progress"><div><span>{{ completedSetCount() }} de {{ totalSetCount() }} series</span><b>{{ progressPercentage() }}%</b></div><i role="progressbar" aria-label="Progreso de series" aria-valuemin="0" aria-valuemax="100" [attr.aria-valuenow]="progressPercentage()"><em [style.transform]="'scaleX(' + progressPercentage() / 100 + ')'" ></em></i></div>
   </header>
+
   <main class="session-content">
-    @if (training) { @for (exercise of training.exercises; track exercise.exerciseId; let exerciseIndex = $index) {
-      <section class="exercise-log" [class.exercise-log--current]="exerciseHasPendingSets(exercise)"><header class="exercise-log__header"><span>{{ exerciseNumber(exerciseIndex) }}</span><div><h2>{{ exercise.name }}</h2><p>{{ exercise.sets.length }} series · completa la siguiente fila</p></div></header><div class="set-log__labels" aria-hidden="true"><span>Serie</span><span>Reps</span><span>Peso</span></div><div class="set-log">@for (set of exercise.sets; track set.setIndex; let i = $index) { @let last = getLastSetReference(exercise.exerciseId, set.setIndex); <div class="set-row" [class.set-row--done]="isLocalSetComplete(set)"><span class="set-row__number">{{ i + 1 }}</span><label><span class="sr-only">Repeticiones de la serie {{ i + 1 }}</span><input type="number" inputmode="numeric" pattern="[0-9]*" min="1" [(ngModel)]="set.reps" (ngModelChange)="onSetChange()" placeholder="—" autocomplete="off"><em>reps</em></label><label><span class="sr-only">Peso de la serie {{ i + 1 }}</span><input type="number" inputmode="decimal" pattern="[0-9.]*" min="0" [(ngModel)]="set.weight" (ngModelChange)="onSetChange()" placeholder="—" autocomplete="off"><em>kg</em></label><small>@if (last) { Anterior: {{ last.reps ?? '—' }} reps · {{ last.weight ?? '—' }} kg } @else { Sin registro anterior }</small>@if (isEstimatedRecord(exercise.exerciseId, set.reps, set.weight)) { <b class="set-row__record">Nuevo récord estimado</b> }</div> }</div>@let lastObservation = getLastObservation(exercise.exerciseId); <details class="exercise-notes"><summary>Notas del ejercicio @if(lastObservation) { · ver última nota }</summary>@if (lastObservation) { <p class="exercise-notes__previous">Última vez: {{ lastObservation }}</p> }<textarea [(ngModel)]="exercise.observation" (ngModelChange)="onSetChange()" rows="2" placeholder="Añade una observación para la próxima vez"></textarea></details></section>
-    } }
-    @if (cloudTraining) { <p class="source-notice">Las series guardadas no se pueden editar. Los borradores permanecen disponibles si pierdes conexión.</p>@if (cloudError) { <p class="session-error" role="alert">{{ cloudError }}</p> } @for (exercise of cloudTraining.exercises; track exercise.id; let exerciseIndex = $index) { <section class="exercise-log"><header class="exercise-log__header"><span>{{ exerciseNumber(exerciseIndex) }}</span><div><h2>{{ exercise.name }}</h2>@if (exercise.notes) { <p>{{ exercise.notes }}</p> }</div></header><div class="set-log__labels" aria-hidden="true"><span>Serie</span><span>Reps</span><span>Peso / RPE</span></div><div class="set-log">@for (set of exercise.sets; track set.clientId; let setIndex = $index) { @let last = getCloudLastSetReference(exercise.exerciseId, set.setNumber); <div class="cloud-set" [class.cloud-set--saved]="set.persisted"><span class="set-row__number">{{ set.setNumber }}</span><label><span class="sr-only">Repeticiones</span><input [(ngModel)]="set.reps" (ngModelChange)="onCloudChange()" [disabled]="!!set.persisted" type="number" min="1" placeholder="—"><em>reps</em></label><label><span class="sr-only">Peso</span><input [(ngModel)]="set.weight" (ngModelChange)="onCloudChange()" [disabled]="!!set.persisted" type="number" min="0" step="0.01" placeholder="—"><em>kg</em></label><label class="rpe-input"><span class="sr-only">RPE</span><input [(ngModel)]="set.rpe" (ngModelChange)="onCloudChange()" [disabled]="!!set.persisted" type="number" min="0" max="10" step="0.1" placeholder="RPE"><em>RPE</em></label>@if (!set.persisted) { <button type="button" (click)="saveCloudSet(exercise, setIndex)" [disabled]="set.saving || !isCloudSetComplete(set)">{{ set.saving ? 'Guardando…' : 'Guardar' }}</button> } @else { <b>Guardada</b> }<small class="cloud-set__benchmark">@if (last) { Anterior: {{ last.reps }} reps · {{ last.weight }} kg } @else { Sin registro anterior }</small></div> }</div><button type="button" class="add-set" (click)="addCloudSet(exercise)">+ Añadir serie</button></section> } <section class="session-notes"><label>Notas de la sesión<textarea [(ngModel)]="cloudTraining.notes" (ngModelChange)="onCloudChange()" maxlength="500" rows="3" placeholder="Cómo fue el entrenamiento"></textarea></label><button type="button" (click)="saveCloudNotes()" [disabled]="cloudSaving || !cloudTraining.notes?.trim()">Guardar notas</button></section> }
-    @if (!training && !cloudTraining && cloudError) { <section class="session-empty"><p>{{ cloudError }}</p><button type="button" (click)="retryCloudStart()" [disabled]="cloudSaving">Reintentar iniciar entrenamiento</button></section> }
+    @if (loading) {
+      <section class="session-loading" aria-live="polite" aria-busy="true"><span></span><span></span><span></span><p>Preparando tu registro…</p></section>
+    }
+
+    @if (training) {
+      <p class="session-instruction">Registra peso y repeticiones. La referencia anterior está al lado, donde hace falta.</p>
+      <div class="exercise-ledger">
+        @for (exercise of training.exercises; track exercise.exerciseId; let exerciseIndex = $index) {
+          <section class="exercise-log" [class.exercise-log--current]="exerciseHasPendingSets(exercise)">
+            <header class="exercise-log__header"><span>{{ exerciseNumber(exerciseIndex) }}</span><div><h2>{{ exercise.name }}</h2><p>{{ exercise.sets.length }} series · {{ exercise.sets.length - completedLocalExerciseSets(exercise) }} pendientes</p></div></header>
+            <div class="set-table">
+              <div class="set-table__head" aria-hidden="true"><span>SET</span><span>ANTERIOR</span><span>KG</span><span>REPS</span><span></span></div>
+              @for (set of exercise.sets; track set.setIndex; let i = $index) {
+                @let last = getLastSetReference(exercise.exerciseId, set.setIndex);
+                <div class="set-row" [class.set-row--done]="isLocalSetComplete(set)" [class.set-row--next]="isNextLocalSet(exercise, i)">
+                  <span class="set-row__number">{{ i + 1 }}</span>
+                  <span class="set-row__previous">@if (last) { <span class="sr-only">Anterior: {{ last.reps ?? '—' }} reps · {{ last.weight ?? '—' }} kg</span><small aria-hidden="true">Anterior</small><b aria-hidden="true">{{ last.weight ?? '—' }} × {{ last.reps ?? '—' }}</b> } @else { <span class="sr-only">Sin registro anterior</span><small aria-hidden="true">Anterior</small><b aria-hidden="true">—</b> }</span>
+                  <label><span class="sr-only">Peso de la serie {{ i + 1 }}</span><input type="number" inputmode="decimal" min="0" [(ngModel)]="set.weight" (ngModelChange)="onSetChange()" placeholder="—" autocomplete="off"></label>
+                  <label><span class="sr-only">Repeticiones de la serie {{ i + 1 }}</span><input type="number" inputmode="numeric" min="1" [(ngModel)]="set.reps" (ngModelChange)="onSetChange()" placeholder="—" autocomplete="off"></label>
+                  <span class="set-row__state" [attr.aria-label]="isLocalSetComplete(set) ? 'Serie completada' : 'Serie pendiente'">@if (isLocalSetComplete(set)) { <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 12 4 4 8-9"/></svg> } @else { <i></i> }</span>
+                  @if (isEstimatedRecord(exercise.exerciseId, set.reps, set.weight)) { <b class="set-row__record">Mejor marca estimada</b> }
+                </div>
+              }
+            </div>
+            @let lastObservation = getLastObservation(exercise.exerciseId);
+            <details class="exercise-notes"><summary>Notas @if(lastObservation) { <span>Última disponible</span> }</summary>@if (lastObservation) { <p>Última vez: {{ lastObservation }}</p> }<textarea [(ngModel)]="exercise.observation" (ngModelChange)="onSetChange()" rows="2" placeholder="Nota para la próxima sesión…" autocomplete="off"></textarea></details>
+          </section>
+        }
+      </div>
+    }
+
+    @if (cloudTraining) {
+      <p class="source-notice">Las series guardadas quedan bloqueadas. Los borradores siguen en este dispositivo si se pierde la conexión.</p>
+      @if (cloudError) { <p class="session-error" role="alert">{{ cloudError }}</p> }
+      <div class="exercise-ledger">
+        @for (exercise of cloudTraining.exercises; track exercise.id; let exerciseIndex = $index) {
+          <section class="exercise-log">
+            <header class="exercise-log__header"><span>{{ exerciseNumber(exerciseIndex) }}</span><div><h2>{{ exercise.name }}</h2><p>{{ exercise.sets.length }} series @if (exercise.notes) { · {{ exercise.notes }} }</p></div></header>
+            <div class="set-table set-table--cloud">
+              <div class="set-table__head" aria-hidden="true"><span>SET</span><span>ANTERIOR</span><span>KG</span><span>REPS</span><span>RPE</span><span></span></div>
+              @for (set of exercise.sets; track set.clientId; let setIndex = $index) {
+                @let last = getCloudLastSetReference(exercise.exerciseId, set.setNumber);
+                <div class="cloud-set" [class.cloud-set--saved]="set.persisted" [class.set-row--next]="isNextCloudSet(exercise, setIndex)">
+                  <span class="set-row__number">{{ set.setNumber }}</span>
+                  <span class="set-row__previous">@if (last) { <small>Anterior</small><b>{{ last.weight }} × {{ last.reps }}</b> } @else { <small>Anterior</small><b>—</b> }</span>
+                  <label><span class="sr-only">Peso</span><input [(ngModel)]="set.weight" (ngModelChange)="onCloudChange()" [disabled]="!!set.persisted" type="number" inputmode="decimal" min="0" step="0.01" placeholder="—"></label>
+                  <label><span class="sr-only">Repeticiones</span><input [(ngModel)]="set.reps" (ngModelChange)="onCloudChange()" [disabled]="!!set.persisted" type="number" inputmode="numeric" min="1" placeholder="—"></label>
+                  <label class="rpe-input"><span class="sr-only">RPE</span><input [(ngModel)]="set.rpe" (ngModelChange)="onCloudChange()" [disabled]="!!set.persisted" type="number" inputmode="decimal" min="0" max="10" step="0.1" placeholder="—"></label>
+                  @if (!set.persisted) { <button type="button" (click)="saveCloudSet(exercise, setIndex)" [disabled]="set.saving || !isCloudSetComplete(set)" [attr.aria-label]="'Guardar serie ' + set.setNumber">{{ set.saving ? '…' : 'Guardar' }}</button> } @else { <span class="set-row__state" aria-label="Serie guardada"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 12 4 4 8-9"/></svg></span> }
+                </div>
+              }
+            </div>
+            <button type="button" class="add-set" (click)="addCloudSet(exercise)">Añadir otra serie</button>
+          </section>
+        }
+      </div>
+      <section class="session-notes"><label for="session-notes">Notas de la sesión</label><textarea id="session-notes" [(ngModel)]="cloudTraining.notes" (ngModelChange)="onCloudChange()" maxlength="500" rows="3" placeholder="Cómo fue el entrenamiento…" autocomplete="off"></textarea><button type="button" (click)="saveCloudNotes()" [disabled]="cloudSaving || !cloudTraining.notes?.trim()">Guardar notas</button></section>
+    }
+
+    @if (!loading && !training && !cloudTraining) { <section class="session-empty"><h2>No hay una sesión activa</h2><p>{{ cloudError || 'Elige una rutina para empezar a registrar.' }}</p>@if (cloudError) { <button type="button" (click)="retryCloudStart()" [disabled]="cloudSaving">Reintentar</button> } @else { <button type="button" (click)="chooseRoutine()">Elegir rutina</button> }</section> }
+    @if (training || cloudTraining) { <button class="cancel-session-link" type="button" (click)="requestCancellation($event)">Cancelar este entrenamiento</button> }
   </main>
-  @if (training || cloudTraining) { <footer class="session-finish"><button class="session-finish__complete" type="button" (click)="requestFinish()"><span>Finalizar entrenamiento</span><small>{{ hasIncompleteSets() || hasUnsubmittedCloudSets() ? 'Hay series pendientes' : 'Todas las series registradas' }}</small></button><button class="session-finish__cancel" type="button" (click)="requestCancellation()">Cancelar entrenamiento</button></footer> }
-  @if (showConfirmFinish) { <div class="finish-sheet" (click)="cancelFinish()"><section (click)="$event.stopPropagation()"><span class="session-eyebrow">Revisar sesión</span><h2>{{ t.t('training.confirmFinish.title') }}</h2><p>{{ t.t('training.confirmFinish.body') }}</p>@if (hasIncompleteSets() || hasUnsubmittedCloudSets()) { <p class="finish-sheet__warning">{{ t.t('training.confirmFinish.incompleteWarning') }}</p> }<div><button (click)="cancelFinish()">Seguir entrenando</button><button (click)="confirmFinish()" [disabled]="cloudSaving">{{ t.t('training.confirmFinish.confirm') }}</button></div></section></div> }
-  @if (showConfirmCancel) { <div class="finish-sheet finish-sheet--cancel" (click)="keepTraining()"><section (click)="$event.stopPropagation()"><span class="session-eyebrow">Descartar sesión</span><h2>¿Cancelar este entrenamiento?</h2>@if (training) { <p>El progreso de esta sesión se descartará. No se añadirá ningún entrenamiento al historial.</p><div><button (click)="keepTraining()">Seguir entrenando</button><button (click)="confirmCancellation()">Sí, cancelar</button></div> } @else { <p>Tu cuenta todavía no permite cancelar o eliminar un entrenamiento iniciado. La sesión seguirá guardada y no se marcará como finalizada.</p><div class="finish-sheet__single-action"><button (click)="keepTraining()">Volver al entrenamiento</button></div> }</section></div> }
+
+  @if (training || cloudTraining) { <footer class="session-finish"><button type="button" (click)="requestFinish($event)"><span>Finalizar entrenamiento</span><small>{{ hasIncompleteSets() || hasUnsubmittedCloudSets() ? 'Revisar series pendientes' : 'Todo registrado' }}</small><i aria-hidden="true">↗</i></button></footer> }
+
+  @if (showConfirmFinish) { <div class="finish-sheet" (click)="cancelFinish()"><section role="dialog" aria-modal="true" aria-labelledby="finish-title" tabindex="-1" (keydown.escape)="cancelFinish()" (click)="$event.stopPropagation()"><span>CIERRE DE SESIÓN</span><h2 id="finish-title">{{ t.t('training.confirmFinish.title') }}</h2><p>{{ t.t('training.confirmFinish.body') }}</p>@if (hasIncompleteSets() || hasUnsubmittedCloudSets()) { <p class="finish-sheet__warning">{{ t.t('training.confirmFinish.incompleteWarning') }}</p> }<div><button type="button" autofocus (click)="cancelFinish()">Seguir entrenando</button><button type="button" (click)="confirmFinish()" [disabled]="cloudSaving">{{ t.t('training.confirmFinish.confirm') }}</button></div></section></div> }
+  @if (showConfirmCancel) { <div class="finish-sheet finish-sheet--cancel" (click)="keepTraining()"><section role="dialog" aria-modal="true" aria-labelledby="cancel-title" tabindex="-1" (keydown.escape)="keepTraining()" (click)="$event.stopPropagation()"><span>ACCIÓN DESTRUCTIVA</span><h2 id="cancel-title">¿Cancelar este entrenamiento?</h2>@if (training) { <p>El progreso de esta sesión se descartará y no se añadirá al historial.</p><div><button type="button" autofocus (click)="keepTraining()">Seguir entrenando</button><button type="button" (click)="confirmCancellation()">Sí, cancelar</button></div> } @else { <p>La cuenta todavía no permite eliminar una sesión iniciada. El entrenamiento seguirá guardado sin finalizar.</p><div><button type="button" autofocus (click)="keepTraining()">Volver al entrenamiento</button></div> }</section></div> }
 </div>

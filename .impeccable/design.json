@@ -1,0 +1,213 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-09-11T13:56:46.3023701Z",
+  "title": "Design System: Gym Tracker",
+  "extensions": {
+    "colorMeta": {
+      "mineral-ivory": {
+        "role": "neutral",
+        "displayName": "Mineral Ivory",
+        "canonical": "#f2f0e9",
+        "tonalRamp": ["oklch(15% 0.010 93.6)", "oklch(27% 0.010 93.6)", "oklch(39% 0.010 93.6)", "oklch(51% 0.010 93.6)", "oklch(63% 0.010 93.6)", "oklch(75% 0.010 93.6)", "oklch(87% 0.010 93.6)", "oklch(95% 0.010 93.6)"]
+      },
+      "ledger-paper": {
+        "role": "neutral",
+        "displayName": "Ledger Paper",
+        "canonical": "#fbfaf6",
+        "tonalRamp": ["oklch(15% 0.005 95.1)", "oklch(27% 0.005 95.1)", "oklch(39% 0.005 95.1)", "oklch(51% 0.005 95.1)", "oklch(63% 0.005 95.1)", "oklch(75% 0.005 95.1)", "oklch(87% 0.005 95.1)", "oklch(95% 0.005 95.1)"]
+      },
+      "paper-low": {
+        "role": "neutral",
+        "displayName": "Paper Low",
+        "canonical": "#e8e6df",
+        "tonalRamp": ["oklch(15% 0.010 93.6)", "oklch(27% 0.010 93.6)", "oklch(39% 0.010 93.6)", "oklch(51% 0.010 93.6)", "oklch(63% 0.010 93.6)", "oklch(75% 0.010 93.6)", "oklch(87% 0.010 93.6)", "oklch(95% 0.010 93.6)"]
+      },
+      "blackened-navy": {
+        "role": "neutral",
+        "displayName": "Blackened Navy",
+        "canonical": "#111827",
+        "tonalRamp": ["oklch(15% 0.032 264.7)", "oklch(27% 0.032 264.7)", "oklch(39% 0.032 264.7)", "oklch(51% 0.032 264.7)", "oklch(63% 0.032 264.7)", "oklch(75% 0.032 264.7)", "oklch(87% 0.032 264.7)", "oklch(95% 0.032 264.7)"]
+      },
+      "navy-soft": {
+        "role": "neutral",
+        "displayName": "Soft Navy",
+        "canonical": "#1c2738",
+        "tonalRamp": ["oklch(15% 0.035 258.9)", "oklch(27% 0.035 258.9)", "oklch(39% 0.035 258.9)", "oklch(51% 0.035 258.9)", "oklch(63% 0.035 258.9)", "oklch(75% 0.035 258.9)", "oklch(87% 0.035 258.9)", "oklch(95% 0.035 258.9)"]
+      },
+      "graphite": {
+        "role": "neutral",
+        "displayName": "Graphite",
+        "canonical": "#535d69",
+        "tonalRamp": ["oklch(15% 0.023 253.0)", "oklch(27% 0.023 253.0)", "oklch(39% 0.023 253.0)", "oklch(51% 0.023 253.0)", "oklch(63% 0.023 253.0)", "oklch(75% 0.023 253.0)", "oklch(87% 0.023 253.0)", "oklch(95% 0.023 253.0)"]
+      },
+      "quiet-slate": {
+        "role": "neutral",
+        "displayName": "Quiet Slate",
+        "canonical": "#626c78",
+        "tonalRamp": ["oklch(15% 0.023 253.0)", "oklch(27% 0.023 253.0)", "oklch(39% 0.023 253.0)", "oklch(51% 0.023 253.0)", "oklch(63% 0.023 253.0)", "oklch(75% 0.023 253.0)", "oklch(87% 0.023 253.0)", "oklch(95% 0.023 253.0)"]
+      },
+      "performance-coral": {
+        "role": "primary",
+        "displayName": "Performance Coral",
+        "canonical": "#f15431",
+        "tonalRamp": ["oklch(15% 0.160 34.0)", "oklch(27% 0.160 34.0)", "oklch(39% 0.160 34.0)", "oklch(51% 0.160 34.0)", "oklch(63% 0.160 34.0)", "oklch(75% 0.160 34.0)", "oklch(87% 0.160 34.0)", "oklch(95% 0.160 34.0)"]
+      },
+      "coral-deep": {
+        "role": "primary",
+        "displayName": "Deep Coral",
+        "canonical": "#b9361f",
+        "tonalRamp": ["oklch(15% 0.160 32.4)", "oklch(27% 0.160 32.4)", "oklch(39% 0.160 32.4)", "oklch(51% 0.160 32.4)", "oklch(63% 0.160 32.4)", "oklch(75% 0.160 32.4)", "oklch(87% 0.160 32.4)", "oklch(95% 0.160 32.4)"]
+      },
+      "coral-wash": {
+        "role": "primary",
+        "displayName": "Coral Wash",
+        "canonical": "#fce5de",
+        "tonalRamp": ["oklch(15% 0.027 37.6)", "oklch(27% 0.027 37.6)", "oklch(39% 0.027 37.6)", "oklch(51% 0.027 37.6)", "oklch(63% 0.027 37.6)", "oklch(75% 0.027 37.6)", "oklch(87% 0.027 37.6)", "oklch(95% 0.027 37.6)"]
+      },
+      "success-pine": {
+        "role": "secondary",
+        "displayName": "Success Pine",
+        "canonical": "#236b52",
+        "tonalRamp": ["oklch(15% 0.082 166.4)", "oklch(27% 0.082 166.4)", "oklch(39% 0.082 166.4)", "oklch(51% 0.082 166.4)", "oklch(63% 0.082 166.4)", "oklch(75% 0.082 166.4)", "oklch(87% 0.082 166.4)", "oklch(95% 0.082 166.4)"]
+      },
+      "danger-red": {
+        "role": "secondary",
+        "displayName": "Danger Red",
+        "canonical": "#b73338",
+        "tonalRamp": ["oklch(15% 0.160 23.3)", "oklch(27% 0.160 23.3)", "oklch(39% 0.160 23.3)", "oklch(51% 0.160 23.3)", "oklch(63% 0.160 23.3)", "oklch(75% 0.160 23.3)", "oklch(87% 0.160 23.3)", "oklch(95% 0.160 23.3)"]
+      },
+      "warning-ochre": {
+        "role": "secondary",
+        "displayName": "Warning Ochre",
+        "canonical": "#8b5b08",
+        "tonalRamp": ["oklch(15% 0.106 72.6)", "oklch(27% 0.106 72.6)", "oklch(39% 0.106 72.6)", "oklch(51% 0.106 72.6)", "oklch(63% 0.106 72.6)", "oklch(75% 0.106 72.6)", "oklch(87% 0.106 72.6)", "oklch(95% 0.106 72.6)"]
+      },
+      "sync-blue": {
+        "role": "secondary",
+        "displayName": "Sync Blue",
+        "canonical": "#285b9e",
+        "tonalRamp": ["oklch(15% 0.122 256.4)", "oklch(27% 0.122 256.4)", "oklch(39% 0.122 256.4)", "oklch(51% 0.122 256.4)", "oklch(63% 0.122 256.4)", "oklch(75% 0.122 256.4)", "oklch(87% 0.122 256.4)", "oklch(95% 0.122 256.4)"]
+      },
+      "hairline": {
+        "role": "neutral",
+        "displayName": "Hairline",
+        "canonical": "rgb(17 24 39 / .12)",
+        "tonalRamp": ["oklch(15% 0.032 264.7)", "oklch(27% 0.032 264.7)", "oklch(39% 0.032 264.7)", "oklch(51% 0.032 264.7)", "oklch(63% 0.032 264.7)", "oklch(75% 0.032 264.7)", "oklch(87% 0.032 264.7)", "oklch(95% 0.032 264.7)"]
+      },
+      "hairline-strong": {
+        "role": "neutral",
+        "displayName": "Strong Hairline",
+        "canonical": "rgb(17 24 39 / .22)",
+        "tonalRamp": ["oklch(15% 0.032 264.7)", "oklch(27% 0.032 264.7)", "oklch(39% 0.032 264.7)", "oklch(51% 0.032 264.7)", "oklch(63% 0.032 264.7)", "oklch(75% 0.032 264.7)", "oklch(87% 0.032 264.7)", "oklch(95% 0.032 264.7)"]
+      },
+      "focus-coral": {
+        "role": "primary",
+        "displayName": "Focus Coral",
+        "canonical": "rgb(241 84 49 / .42)",
+        "tonalRamp": ["oklch(15% 0.160 34.0)", "oklch(27% 0.160 34.0)", "oklch(39% 0.160 34.0)", "oklch(51% 0.160 34.0)", "oklch(63% 0.160 34.0)", "oklch(75% 0.160 34.0)", "oklch(87% 0.160 34.0)", "oklch(95% 0.160 34.0)"]
+      }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "Títulos de página breves y de máxima jerarquía." },
+      "headline": { "displayName": "Headline", "purpose": "Capítulos, ejercicios y secciones principales." },
+      "title": { "displayName": "Title", "purpose": "Rutinas, resultados y encabezados locales." },
+      "body": { "displayName": "Body", "purpose": "Instrucciones y explicación funcional compacta." },
+      "label": { "displayName": "Label", "purpose": "Kickers, columnas, estados y coordenadas del registro." },
+      "metric": { "displayName": "Metric", "purpose": "Tiempo, kilos, repeticiones, volumen e índices tabulares." }
+    },
+    "shadows": [
+      { "name": "dock-ambient", "value": "0 14px 40px rgb(12 18 28 / .16)", "purpose": "Despegar la navegación móvil del lienzo." },
+      { "name": "commandbar-structural", "value": "0 8px 28px rgb(17 24 39 / .16)", "purpose": "Separar la barra de sesión pegajosa durante el desplazamiento." },
+      { "name": "floating-action", "value": "0 16px 38px rgb(17 24 39 / .09)", "purpose": "Elevar la finalización fija en escritorio." },
+      { "name": "coral-halo", "value": "0 8px 20px rgb(241 84 49 / .24)", "purpose": "Reforzar exclusivamente el acceso central para entrenar." }
+    ],
+    "motion": [
+      { "name": "ease-out", "value": "cubic-bezier(.23, 1, .32, 1)", "purpose": "Easing principal para cambios de color, foco, progreso y confirmación." },
+      { "name": "ease-move", "value": "cubic-bezier(.77, 0, .175, 1)", "purpose": "Desplazamientos deliberados entre estados espaciales." },
+      { "name": "state-transition", "value": "160ms var(--ease-out)", "purpose": "Transición estándar de color, fondo, borde, sombra y opacidad." },
+      { "name": "press", "value": "120ms var(--ease-out)", "purpose": "Respuesta táctil de escala al pulsar." },
+      { "name": "progress", "value": "180ms var(--ease-out)", "purpose": "Actualización de progreso y confirmación de serie." },
+      { "name": "sheet-entry", "value": "240ms cubic-bezier(.32, .72, 0, 1)", "purpose": "Entrada vertical de hojas modales desde móvil." }
+    ],
+    "breakpoints": [
+      { "name": "minimum-canvas", "value": "20rem" },
+      { "name": "narrow-ledger", "value": "23rem" },
+      { "name": "desktop", "value": "48rem" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Acción principal de avance, búsqueda, guardado o finalización.",
+      "html": "<button class=\"ds-btn-primary\" type=\"button\"><span>Finalizar entrenamiento</span><i aria-hidden=\"true\">↗</i></button>",
+      "css": ".ds-btn-primary { display:flex; width:100%; min-height:3rem; align-items:center; justify-content:space-between; border:0; border-radius:0; padding:0 1rem; background:var(--signal,#f15431); color:var(--ink,#111827); font-family:var(--ui-font,system-ui,sans-serif); font-size:.78rem; font-weight:820; transition:filter 160ms cubic-bezier(.23,1,.32,1),transform 120ms cubic-bezier(.23,1,.32,1); } .ds-btn-primary i { font-size:1.1rem; font-style:normal; } .ds-btn-primary:hover { filter:brightness(.96); } .ds-btn-primary:focus-visible { outline:3px solid var(--focus,rgb(241 84 49 / .42)); outline-offset:2px; } .ds-btn-primary:active { transform:scale(.975); }"
+    },
+    {
+      "name": "Text Field",
+      "kind": "input",
+      "refersTo": "field",
+      "description": "Campo táctil general para búsqueda, ajustes y formularios.",
+      "html": "<label class=\"ds-field\"><span>Nombre</span><input type=\"text\" placeholder=\"Sentadilla frontal\"></label>",
+      "css": ".ds-field { display:grid; gap:.3rem; color:var(--muted,#535d69); font-family:var(--ui-font,system-ui,sans-serif); font-size:.59rem; font-weight:750; } .ds-field input { width:100%; min-height:2.75rem; border:1px solid var(--hairline-strong,rgb(17 24 39 / .22)); border-radius:var(--radius-control,.65rem); padding:.55rem .65rem; background:var(--paper,#fbfaf6); color:var(--ink,#111827); font:inherit; font-size:.82rem; font-weight:400; caret-color:var(--signal-dark,#b9361f); transition:border-color 160ms cubic-bezier(.23,1,.32,1),box-shadow 160ms cubic-bezier(.23,1,.32,1); } .ds-field input::placeholder { color:#5f6873; opacity:1; } .ds-field input:hover { border-color:var(--ink,#111827); } .ds-field input:focus-visible { outline:3px solid var(--focus,rgb(241 84 49 / .42)); outline-offset:2px; }"
+    },
+    {
+      "name": "Mobile Training Dock",
+      "kind": "nav",
+      "refersTo": "mobile-dock",
+      "description": "Navegación móvil de cinco destinos con entrenamiento como acción central.",
+      "html": "<nav class=\"ds-dock\" aria-label=\"Navegación principal\"><a href=\"#\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M4 11.5 12 5l8 6.5V20H4Z\"/><path d=\"M9 20v-6h6v6\"/></svg><span>Inicio</span></a><a href=\"#\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M6 4h12v16H6z\"/><path d=\"M9 8h6M9 12h6M9 16h4\"/></svg><span>Rutinas</span></a><a class=\"ds-dock-train\" href=\"#\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M5 12h14M12 5v14\"/></svg><span>Entrenar</span></a><a href=\"#\"><span>Historial</span></a><a class=\"ds-dock-active\" href=\"#\"><span>Progreso</span></a></nav>",
+      "css": ".ds-dock { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); height:4.15rem; padding:.35rem; border:1px solid var(--hairline,rgb(17 24 39 / .12)); border-radius:1rem; background:rgb(246 244 238 / .96); box-shadow:0 14px 40px rgb(12 18 28 / .16); font-family:var(--ui-font,system-ui,sans-serif); } .ds-dock a { display:flex; min-width:0; min-height:3.4rem; flex-direction:column; align-items:center; justify-content:center; gap:.2rem; border-radius:.7rem; color:var(--muted,#535d69); font-size:.55rem; font-weight:760; text-decoration:none; transition:background-color 160ms cubic-bezier(.23,1,.32,1),transform 120ms cubic-bezier(.23,1,.32,1); } .ds-dock svg { width:1.18rem; height:1.18rem; fill:none; stroke:currentColor; stroke-width:1.75; stroke-linecap:round; stroke-linejoin:round; } .ds-dock a:hover { background:var(--paper-low,#e8e6df); } .ds-dock a:focus-visible { outline:3px solid var(--focus,rgb(241 84 49 / .42)); outline-offset:2px; } .ds-dock a:active { transform:scale(.975); } .ds-dock .ds-dock-active { background:var(--ink,#111827); color:var(--paper,#fbfaf6); } .ds-dock .ds-dock-train { margin:-.8rem .08rem 0; background:var(--signal,#f15431); color:var(--ink,#111827); box-shadow:0 8px 20px rgb(241 84 49 / .24); }"
+    },
+    {
+      "name": "Ruled Ledger Item",
+      "kind": "card",
+      "description": "Fila abierta para rutinas, sesiones y resultados sin envoltorio de tarjeta.",
+      "html": "<article class=\"ds-ledger-item\"><b>02</b><div><strong>Tirón A</strong><span>5 ejercicios · última sesión hace 3 días</span></div><i aria-hidden=\"true\">→</i></article>",
+      "css": ".ds-ledger-item { display:grid; grid-template-columns:2.2rem minmax(0,1fr) auto; grid-template-rows:auto auto; column-gap:.7rem; min-height:4.8rem; align-items:center; border-top:1px solid var(--hairline-strong,rgb(17 24 39 / .22)); border-bottom:1px solid var(--hairline,rgb(17 24 39 / .12)); background:transparent; color:var(--ink,#111827); font-family:var(--ui-font,system-ui,sans-serif); } .ds-ledger-item b { grid-row:1/3; align-self:stretch; display:flex; align-items:center; border-right:1px solid var(--hairline,rgb(17 24 39 / .12)); color:var(--signal-dark,#b9361f); font-family:var(--numeric-font,system-ui,sans-serif); font-size:.72rem; } .ds-ledger-item strong { align-self:end; overflow:hidden; font-size:.9rem; text-overflow:ellipsis; white-space:nowrap; } .ds-ledger-item span { display:block; align-self:start; margin-top:.16rem; color:var(--muted,#535d69); font-size:.67rem; } .ds-ledger-item i { grid-column:3; grid-row:1/3; font-style:normal; }"
+    },
+    {
+      "name": "Training Set Row",
+      "kind": "custom",
+      "description": "Unidad de registro que mantiene Anterior, kilos, repeticiones y estado en una línea.",
+      "html": "<div class=\"ds-set-row ds-set-row-next\"><span class=\"ds-set-number\">2</span><span class=\"ds-set-previous\"><small>Anterior</small><b>82,5 × 8</b></span><label><span>KG</span><input type=\"number\" value=\"85\"></label><label><span>REPS</span><input type=\"number\" value=\"8\"></label><span class=\"ds-set-state\" aria-label=\"Serie pendiente\"><i></i></span></div>",
+      "css": ".ds-set-row { position:relative; display:grid; grid-template-columns:2rem minmax(4.15rem,.9fr) minmax(3.4rem,.75fr) minmax(3.4rem,.75fr) 2rem; gap:.35rem; min-height:4.25rem; align-items:center; border-top:1px solid var(--hairline,rgb(17 24 39 / .12)); color:var(--ink,#111827); font-family:var(--ui-font,system-ui,sans-serif); } .ds-set-row-next::before { position:absolute; top:.55rem; bottom:.55rem; left:-1rem; width:.24rem; background:var(--signal,#f15431); content:\"\"; } .ds-set-number { color:var(--muted,#535d69); font-family:var(--numeric-font,system-ui,sans-serif); font-size:.72rem; font-weight:800; } .ds-set-previous { display:flex; min-width:0; flex-direction:column; } .ds-set-previous small { color:var(--muted,#535d69); font-size:.6rem; font-weight:720; } .ds-set-previous b { margin-top:.12rem; font-family:var(--numeric-font,system-ui,sans-serif); font-size:.82rem; font-variant-numeric:tabular-nums; } .ds-set-row label { min-width:0; color:var(--muted,#535d69); font-size:.5rem; text-align:center; } .ds-set-row input { width:100%; min-width:0; min-height:3rem; border:0; border-radius:.35rem; padding:.2rem; background:var(--paper-low,#e8e6df); color:var(--ink,#111827); font-family:var(--numeric-font,system-ui,sans-serif); font-size:1.2rem; font-weight:760; font-variant-numeric:tabular-nums; text-align:center; } .ds-set-row input:hover { filter:brightness(.98); } .ds-set-row input:focus-visible { outline:0; box-shadow:inset 0 0 0 2px var(--signal,#f15431); } .ds-set-state { display:grid; width:1.75rem; height:1.75rem; place-items:center; justify-self:end; border-radius:50%; background:var(--paper-low,#e8e6df); } .ds-set-state i { width:.35rem; height:.35rem; border-radius:50%; background:var(--quiet,#626c78); }"
+    }
+  ],
+  "narrative": {
+    "northStar": "Cuaderno de pista",
+    "overview": "Gym Tracker se siente como un cuaderno de entrenamiento preciso llevado al terreno digital: papel mineral, tinta casi negra, líneas de registro y una única marca coral que señala el siguiente esfuerzo. La composición es abierta y editorial, con jerarquías tipográficas contundentes y datos alineados como anotaciones de rendimiento, no como widgets de un dashboard.\n\nEs un sistema de operación móvil antes que un escaparate. Durante una sesión reduce la lectura, acerca el historial al campo que se está completando y mantiene acciones decisivas al alcance del pulgar; fuera de ella conserva el mismo lenguaje de hojas, índices y reglas. La expresión premium nace de la disciplina, el ritmo y la precisión, no del ornamento.",
+    "keyCharacteristics": [
+      "Fondo mineral cálido y superficies de papel ligeramente elevadas por tono.",
+      "Tinta navy casi negra, tipografía numérica compacta y cifras tabulares.",
+      "Un único acento coral reservado para acción, progreso y orientación.",
+      "Listas abiertas y divisores finos en lugar de mosaicos de tarjetas.",
+      "Operación móvil con objetivos táctiles amplios, dock seguro y estados inmediatos."
+    ],
+    "rules": [
+      { "name": "The One Mark Rule", "body": "Performance Coral es la única voz de marca; en una vista señala la acción primaria, el progreso o la posición, y no se convierte en relleno ornamental.", "section": "colors" },
+      { "name": "The Status Is Not Brand Rule", "body": "Verde, rojo, ocre y azul explican estados concretos; no sustituyen al coral en navegación o llamadas a la acción.", "section": "colors" },
+      { "name": "The Numbers Carry Weight Rule", "body": "Toda cifra de rendimiento usa la familia numérica y `tabular-nums`; los números son contenido primario, no microcopy.", "section": "typography" },
+      { "name": "The Short Headline Rule", "body": "Los displays se mantienen cortos, con interlineado muy cerrado y ajuste equilibrado; nunca se estiran hasta formar párrafos heroicos.", "section": "typography" },
+      { "name": "The Open Ledger Rule", "body": "Las colecciones se construyen como filas regladas de ancho completo; una tarjeta cerrada solo aparece cuando el estado necesita una superficie flotante o aislada.", "section": "layout" },
+      { "name": "The Thumb Path Rule", "body": "En modo móvil, la acción que continúa o termina el entrenamiento permanece alcanzable sin volver al inicio de la pantalla.", "section": "layout" },
+      { "name": "The Paper Stays Flat Rule", "body": "Listas, estadísticas y formularios permanecen planos; no se añade sombra a una superficie solo para convertirla en tarjeta.", "section": "elevation" },
+      { "name": "The Radius Has Meaning Rule", "body": "Cuanto más flotante es el objeto, mayor puede ser su radio; el contenido de registro que pertenece a la página permanece recto y abierto.", "section": "shapes" }
+    ],
+    "dos": [
+      "Do mantener la siguiente acción de entrenamiento y la referencia “Anterior” en la misma zona de mirada y pulgar.",
+      "Do usar Performance Coral con moderación para acción, progreso o posición actual.",
+      "Do estructurar colecciones con reglas, índices y espacio abierto sobre Mineral Ivory.",
+      "Do presentar kilos, repeticiones, tiempo y volumen con cifras tabulares y jerarquía inmediata.",
+      "Do conservar objetivos táctiles de al menos 44px, foco visible y una alternativa sin movimiento."
+    ],
+    "donts": [
+      "Don't convertir cada bloque en una tarjeta redondeada con sombra.",
+      "Don't introducir gradientes, vidrio decorativo, neón, estética cyberpunk o colores de estado como identidad.",
+      "Don't añadir paneles de dashboard genéricos cuando una fila, una regla o una cifra protagonista resuelven la jerarquía.",
+      "Don't ocultar datos locales utilizables detrás de estados de red o sincronización.",
+      "Don't elevar cancelar al mismo nivel visual que finalizar un entrenamiento fuera de su diálogo de confirmación."
+    ]
+  }
+}

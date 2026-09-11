@@ -1,92 +1,35 @@
-<div class="calendar-page flex flex-col flex-1 bg-gray-50">
-  <!-- Header -->
-  <div class="calendar-header bg-gradient-to-br from-orange-500 to-orange-700 text-white px-4 pt-4 pb-6 shadow-lg">
-    <h1 class="text-2xl font-bold mb-3">{{ t.t('calendar.title') }}</h1>
-    <div class="flex gap-2">
-      <button (click)="setView('week')" [class.bg-white]="view==='week'" [class.text-orange-600]="view==='week'" [class.bg-orange-100]="view!=='week'" [class.text-gray-700]="view!=='week'" class="px-4 py-2 rounded-lg font-semibold text-sm shadow transition-all">{{ t.t('calendar.weekly') }}</button>
-      <button (click)="setView('list')" [class.bg-white]="view==='list'" [class.text-orange-600]="view==='list'" [class.bg-orange-100]="view!=='list'" [class.text-gray-700]="view!=='list'" class="px-4 py-2 rounded-lg font-semibold text-sm shadow transition-all">{{ t.t('calendar.list') }}</button>
-    </div>
-  </div>
-  
-  <div class="p-4">
-  @if (cloudError) { <p class="mb-3 rounded-xl bg-red-50 p-3 text-sm text-red-700">{{ cloudError }}</p> }
+<div class="history-page">
+  <header class="history-head"><div><span>DIARIO DE ENTRENAMIENTO</span><h1>Historial</h1><p>Cada sesión queda registrada en orden, con el contexto necesario para volver a ella.</p></div><nav aria-label="Vista del historial"><button type="button" (click)="setView('list')" [class.active]="view === 'list'" [disabled]="loading">Diario</button><button type="button" (click)="setView('week')" [class.active]="view === 'week'" [disabled]="loading">Semana</button></nav></header>
 
-  <!-- WEEKLY VIEW -->
-  @if (view==='week') {
-    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-4">
-      <div class="flex items-center justify-between mb-2">
-        <button (click)="prevWeek()" class="w-10 h-10 flex items-center justify-center rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold transition-colors" aria-label="Previous week">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="m15 18-6-6 6-6"/></svg>
-        </button>
-        <div class="font-bold text-lg text-gray-900">
-          {{ weekDays[0] | date:'MMM d' }} - {{ weekDays[6] | date:'MMM d, yyyy' }}
-        </div>
-        <button (click)="nextWeek()" class="w-10 h-10 flex items-center justify-center rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold transition-colors" aria-label="Next week">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="m9 18 6-6-6-6"/></svg>
-        </button>
-      </div>
-      <!-- Weekly summary -->
-      <div class="text-sm text-gray-500 text-center">
-        {{ t.t('calendar.workoutsThisWeek', { count: weekWorkoutCount, plural: weekWorkoutCount === 1 ? '' : 's' }) }}
-      </div>
-    </div>
-    <div class="space-y-3">
-      @for (day of weekDays; track day; let i = $index) {
-        <div 
-          class="rounded-xl p-4 transition-all"
-          [ngClass]="getWorkoutsForDay(day).length
-            ? 'bg-white border-2 border-orange-200 shadow-md'
-            : 'bg-gray-100 border-2 border-gray-200'"
-        >
-          <div class="flex items-center gap-4">
-            <div class="flex-shrink-0 w-14 h-14 flex flex-col items-center justify-center rounded-xl shadow-sm"
-              [ngClass]="getWorkoutsForDay(day).length
-                ? 'bg-orange-500 text-white'
-                : 'bg-gray-200 text-gray-500'"
-            >
-              <div class="text-[9px] font-bold uppercase tracking-wide">
-                {{ [t.t('calendar.dayMon'), t.t('calendar.dayTue'), t.t('calendar.dayWed'), t.t('calendar.dayThu'), t.t('calendar.dayFri'), t.t('calendar.daySat'), t.t('calendar.daySun')][i] }}
-              </div>
-              <div class="text-xl font-black leading-none">
-                {{ day | date:'d' }}
-              </div>
-            </div>
-            <div class="flex-1 min-w-0">
-              @if (getWorkoutsForDay(day).length) {
-                <div class="space-y-2">
-                  @for (w of getWorkoutsForDay(day); track w.id) {
-                    <a [routerLink]="['/calendar', w.id]" [queryParams]="{ source: w.source }" class="block bg-white border-l-4 border-orange-500 text-gray-900 rounded-lg px-3 py-2 shadow-sm hover:bg-orange-50 transition">
-                      <div class="font-bold text-sm">{{ w.routineName }}</div>
-                      <div class="text-xs text-gray-700 mt-0.5">{{ w.exerciseCount }} {{ t.t('calendar.exercises') }}</div>
-                    </a>
-                  }
-                </div>
-              } @else {
-                <div class="text-gray-500 text-sm font-medium">{{ t.t('calendar.restDay') }}</div>
-              }
-            </div>
-          </div>
-        </div>
-      }
-    </div>
-  }
-
-  <!-- LIST VIEW -->
-  @if (view==='list') {
-    @for (w of workouts; track w.id) {
-      <div class="bg-white rounded-xl shadow-md border-l-4 border-orange-600 mb-3 px-4 py-4 flex items-center justify-between">
-        <a [routerLink]="['/calendar', w.id]" [queryParams]="{ source: w.source }" class="flex-1 min-w-0 block">
-          <div class="font-bold text-base text-gray-900">{{ w.routineName }}</div>
-          <div class="text-gray-500 text-sm mt-1">{{ (w.finishedAt || w.startedAt) | date:'mediumDate' }} @if (!w.finishedAt && w.source === 'cloud') { · En curso }</div>
-          <div class="text-gray-600 text-sm mt-1 font-medium">{{ w.exerciseCount }} {{ t.t('calendar.exercises') }}</div>
-        </a>
-        @if (w.source === 'local') { <button (click)="onDeleteWorkout(w)" class="ml-4 px-3 py-1.5 rounded-lg bg-red-100 text-red-700 font-semibold text-xs shadow hover:bg-red-200 transition-all">{{ t.t('calendar.delete') }}</button> }
-      </div>
+  <main>
+    @if (cloudError) { <p class="history-error" role="alert">{{ cloudError }}</p> }
+    @if (view === 'list') {
+      <section class="diary" aria-label="Sesiones en orden cronológico">
+        @if (loading) {
+          <div class="session-loading" aria-live="polite" aria-busy="true"><span></span><span></span><span></span><p>Cargando tu diario de entrenamiento…</p></div>
+        } @else if (workouts.length) {
+          <div class="diary-rail" aria-hidden="true"><i></i></div>
+          @for (w of workouts; track w.id; let i = $index) {
+            <article class="diary-entry">
+              <time><strong>{{ (w.finishedAt || w.startedAt) | date:'dd' }}</strong><span>{{ (w.finishedAt || w.startedAt) | date:'MMM' }}</span><small>{{ (w.finishedAt || w.startedAt) | date:'y' }}</small></time>
+              <a [routerLink]="['/calendar', w.id]" [queryParams]="{ source: w.source }"><span>{{ w.source === 'cloud' ? 'EN TU CUENTA' : 'EN ESTE DISPOSITIVO' }}</span><h2>{{ w.routineName }}</h2><p>{{ w.exerciseCount }} ejercicios @if (!w.finishedAt && w.source === 'cloud') { · En curso }</p><b>Ver registro <i aria-hidden="true">↗</i></b></a>
+              @if (w.source === 'local') { <button type="button" (click)="onDeleteWorkout(w)" aria-label="Eliminar entrenamiento">Eliminar</button> }
+            </article>
+          }
+        } @else {
+          <div class="history-empty"><span aria-hidden="true">00</span><h2>El diario está por empezar</h2><p>Termina tu primera sesión y aparecerá aquí, en orden cronológico.</p><a routerLink="/select-routine">Empezar a entrenar</a></div>
+        }
+      </section>
+    } @else {
+      <section class="week-diary">
+        <header><button type="button" (click)="prevWeek()" aria-label="Semana anterior">←</button><div><strong>{{ weekDays[0] | date:'d MMM' }} — {{ weekDays[6] | date:'d MMM y' }}</strong><span>{{ weekWorkoutCount }} {{ weekWorkoutCount === 1 ? 'sesión' : 'sesiones' }}</span></div><button type="button" (click)="nextWeek()" aria-label="Semana siguiente">→</button></header>
+        <ol>
+          @for (day of weekDays; track day; let i = $index) {
+            <li [class.has-training]="getWorkoutsForDay(day).length"><time><span>{{ [t.t('calendar.dayMon'), t.t('calendar.dayTue'), t.t('calendar.dayWed'), t.t('calendar.dayThu'), t.t('calendar.dayFri'), t.t('calendar.daySat'), t.t('calendar.daySun')][i] }}</span><strong>{{ day | date:'d' }}</strong></time><div>@if (getWorkoutsForDay(day).length) { @for (w of getWorkoutsForDay(day); track w.id) { <a [routerLink]="['/calendar', w.id]" [queryParams]="{ source: w.source }"><strong>{{ w.routineName }}</strong><span>{{ w.exerciseCount }} ejercicios</span></a> } } @else { <span>Día de descanso</span> }</div></li>
+          }
+        </ol>
+      </section>
     }
-    @if (!workouts.length) {
-      <div class="text-center text-gray-400 mt-10">{{ t.t('calendar.noWorkouts') }}</div>
-    }
-  }
-  @if (auth.isAuthenticated() && cloudTotalPages > 1) { <div class="mb-4 flex justify-between gap-3"><button (click)="previousCloudPage()" [disabled]="cloudPageNumber === 0" class="rounded-lg border px-3 py-2 text-sm font-bold disabled:opacity-40">Anterior</button><span class="py-2 text-sm text-gray-500">Página {{ cloudPageNumber + 1 }} de {{ cloudTotalPages }}</span><button (click)="nextCloudPage()" [disabled]="cloudPageNumber + 1 >= cloudTotalPages" class="rounded-lg border px-3 py-2 text-sm font-bold disabled:opacity-40">Siguiente</button></div> }
-  </div>
+    @if (auth.isAuthenticated() && cloudTotalPages > 1) { <nav class="history-pagination" aria-label="Páginas del historial"><button type="button" (click)="previousCloudPage()" [disabled]="cloudPageNumber === 0">Anterior</button><span>{{ cloudPageNumber + 1 }} / {{ cloudTotalPages }}</span><button type="button" (click)="nextCloudPage()" [disabled]="cloudPageNumber + 1 >= cloudTotalPages">Siguiente</button></nav> }
+  </main>
 </div>

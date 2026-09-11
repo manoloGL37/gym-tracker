@@ -38,6 +38,7 @@ export class RoutinesComponent {
   localName = '';
   localExercises: { id: string; name: string; setsCount: number }[] = [];
   cloudDraft: CloudRoutineDraft = newCloudRoutineDraft();
+  editorOpen = false;
 
   selectorOpen = false;
   selectorLoading = false;
@@ -93,6 +94,7 @@ export class RoutinesComponent {
   }
 
   startCreate(): void {
+    this.editorOpen = true;
     this.error.set(null);
     this.editingLocal = null;
     this.editingCloud = null;
@@ -102,6 +104,7 @@ export class RoutinesComponent {
   }
 
   async startEdit(item: RoutineListItem): Promise<void> {
+    this.editorOpen = true;
     this.error.set(null);
     if (item.source === 'local') {
       this.editingCloud = null;
@@ -177,6 +180,7 @@ export class RoutinesComponent {
   }
 
   cancelEdit(): void {
+    this.editorOpen = false;
     this.editingLocal = null;
     this.editingCloud = null;
     this.localName = '';

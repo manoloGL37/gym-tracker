@@ -1,2 +1,38 @@
-:host { display:block; }.workout-detail-page { min-height:100dvh; background:var(--canvas)!important; }.workout-detail-page>div:first-child { padding:1.75rem max(1rem,calc((100% - 56rem)/2)) 1.5rem!important; background:var(--rubber)!important; }.workout-detail-page h1 { letter-spacing:-.055em; }.workout-detail-page>.flex-1 { width:min(100%,56rem); margin:0 auto; padding:1.5rem 1rem 2.5rem!important; }.workout-detail-page .bg-white.rounded-2xl { margin-bottom:1.8rem!important; padding:0 0 1.2rem!important; border:0!important; border-bottom:1px solid var(--line)!important; border-radius:0!important; background:transparent!important; box-shadow:none!important; }.workout-detail-page .font-bold.text-gray-900 { font-size:1.15rem; letter-spacing:-.03em; }.workout-detail-page table { font-variant-numeric:tabular-nums; }.workout-detail-page th { color:var(--muted)!important; font-size:.63rem!important; letter-spacing:.1em; text-transform:uppercase; }.workout-detail-page td { padding:.7rem .5rem!important; font-weight:700; }.workout-detail-page tbody tr:last-child { border-bottom:0!important; }.workout-detail-page .bg-blue-50 { border-left-color:var(--cloud)!important; border-radius:0!important; }.workout-detail-page button { min-height:3rem; border-radius:.7rem!important; }.workout-detail-page input { min-height:2.75rem!important; border-color:var(--line)!important; }
-@media(min-width:48rem) { .workout-detail-page>.flex-1 { padding:2rem; }.workout-detail-page .bg-white.rounded-2xl { display:grid; grid-template-columns:13rem minmax(0,1fr); gap:2rem; }.workout-detail-page .bg-white.rounded-2xl>.font-bold { grid-column:1; }.workout-detail-page .bg-white.rounded-2xl>.overflow-x-auto { grid-column:2; grid-row:1 / span 2; }.workout-detail-page .bg-white.rounded-2xl>.mt-3 { grid-column:1; } }
+:host { display:block; }
+.record-page { min-height:100dvh; background:var(--ground); }
+.record-mast { display:grid; gap:1.4rem; padding:calc(1rem + env(safe-area-inset-top)) 1rem 1.5rem; background:var(--ink); color:white; }
+.record-mast>button { justify-self:start; min-height:2.75rem; border:0; padding:0; background:transparent; color:#c1c8d1; font-size:.72rem; font-weight:760; }
+.record-mast span { color:var(--signal); font-size:.62rem; font-weight:820; letter-spacing:.11em; }
+.record-mast h1 { max-width:14ch; margin:.35rem 0; font-family:var(--numeric-font); font-size:clamp(2.2rem,11vw,4rem); letter-spacing:-.035em; line-height:.9; }
+.record-mast time,.record-mast>p { color:#c1c8d1; font-size:.72rem; }
+.record-mast>p { margin:0; }
+.record-body { width:min(100%,64rem); margin:auto; padding:1.2rem 0 3rem; }
+.record-intro { display:flex; align-items:baseline; gap:.6rem; padding:0 1rem 1.2rem; border-bottom:1px solid var(--hairline-strong); }
+.record-intro strong { color:var(--signal-dark); font-family:var(--numeric-font); font-size:2.8rem; line-height:1; }
+.record-intro span { color:var(--muted); font-size:.72rem; }
+.record-exercise { padding:0 1rem 2rem; border-bottom:1px solid var(--hairline-strong); }
+.record-exercise>header { display:grid; grid-template-columns:2.4rem minmax(0,1fr); gap:.7rem; padding:1.6rem 0 .9rem; }
+.record-exercise>header>b { color:var(--signal-dark); font-family:var(--numeric-font); font-size:.72rem; }
+.record-exercise h2 { margin:0; font-family:var(--numeric-font); font-size:1.4rem; letter-spacing:-.025em; }
+.record-exercise header p { max-width:42rem; margin:.4rem 0 0; color:var(--muted); font-size:.7rem; line-height:1.45; white-space:pre-line; }
+.record-table { margin-left:3.1rem; border-top:1px solid var(--hairline-strong); }
+.record-table__head,.record-row { display:grid; grid-template-columns:2rem 1fr 1fr; align-items:center; text-align:center; }
+.record-table--cloud .record-table__head,.record-table--cloud .record-row { grid-template-columns:2rem repeat(3,1fr); }
+.record-table__head { min-height:2rem; color:var(--muted); font-size:.62rem; font-weight:820; letter-spacing:.07em; }
+.record-row { min-height:3.5rem; border-top:1px solid var(--hairline); }
+.record-row>span { color:var(--muted); font-family:var(--numeric-font); font-size:.7rem; text-align:left; }
+.record-row>strong { font-family:var(--numeric-font); font-size:1.05rem; font-variant-numeric:tabular-nums; }
+.record-row label { padding:.25rem; }
+.record-row input { width:100%; min-height:2.8rem; border:0; background:var(--paper-low); font-family:var(--numeric-font); font-size:1.05rem; font-weight:760; text-align:center; }
+.record-observation { display:grid; gap:.35rem; margin:1rem 0 0 3.1rem; color:var(--muted); font-size:.65rem; font-weight:760; }
+.record-observation textarea { width:100%; padding:.7rem; resize:vertical; }
+.record-notes { margin:2rem 1rem 0; padding-top:1.2rem; border-top:1px solid var(--hairline-strong); }
+.record-notes h2 { margin:0; font-family:var(--numeric-font); font-size:1.2rem; }
+.record-notes p { color:var(--muted); font-size:.75rem; line-height:1.5; white-space:pre-line; }
+.record-edit { display:block; min-height:3rem; margin:1.5rem 1rem 0 auto; border:0; padding:0 1rem; background:var(--ink); color:white; font-size:.72rem; font-weight:800; }
+.record-actions { position:sticky; bottom:var(--dock-space); display:grid; grid-template-columns:1fr 1.5fr; gap:.5rem; padding:.7rem 1rem; background:rgb(242 240 233 / .96); }
+.record-actions button { min-height:3.1rem; border:1px solid var(--hairline-strong); background:var(--paper-low); font-size:.72rem; font-weight:800; }
+.record-actions button:last-child { border-color:var(--signal); background:var(--signal); }
+.record-error { margin:1rem; padding:1rem; background:#f8e3e3; color:var(--danger); }
+.record-error p { font-size:.72rem; }.record-error button { min-height:2.75rem; border:0; background:transparent; color:inherit; font-weight:800; text-decoration:underline; }
+@media (min-width:48rem) { .record-mast { grid-template-columns:auto minmax(0,1fr) auto; align-items:end; padding:2rem max(2rem,calc((100% - 64rem)/2)); }.record-mast>button { align-self:start; }.record-mast>p { text-align:right; }.record-body { padding:2rem 2rem 5rem; }.record-exercise { display:grid; grid-template-columns:minmax(12rem,.7fr) minmax(0,1.3fr); gap:2rem; padding-inline:0; }.record-exercise>header { grid-template-columns:2.4rem minmax(0,1fr); }.record-table { align-self:start; margin:1.6rem 0 0; }.record-observation { grid-column:2; margin:0 0 1.5rem; }.record-actions { bottom:1rem; width:28rem; margin:1.5rem 0 0 auto; } }

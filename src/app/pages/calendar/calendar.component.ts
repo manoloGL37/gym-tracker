@@ -29,6 +29,7 @@ export class CalendarComponent implements OnInit {
   cloudPageNumber = 0;
   cloudTotalPages = 0;
   cloudError: string | null = null;
+  loading = true;
   weekStart: Date = CalendarComponent.getStartOfWeek(new Date());
   weekDays: Date[] = [];
 
@@ -45,12 +46,13 @@ export class CalendarComponent implements OnInit {
   ngOnInit() { this.setWeekDays(); }
 
   async loadWorkouts(page = this.cloudPageNumber) {
+    this.loading = true;
     const rawLocal = await WorkoutHistoryRepository.getAll();
     const accountId = this.auth.currentUser?.()?.id;
     const migrated = accountId ? await Promise.all(rawLocal.map(workout => this.migration.isWorkoutMigrated(accountId, workout.id))) : rawLocal.map(() => false);
     const local = rawLocal.filter((_, index) => !migrated[index]);
     const localItems = local.map(workout => ({ source: 'local' as const, id: workout.id, routineName: workout.routineName, startedAt: workout.startedAt, finishedAt: workout.finishedAt, exerciseCount: workout.exercises.length, local: workout }));
-    if (!this.auth.isAuthenticated()) { this.workouts = localItems; return; }
+    if (!this.auth.isAuthenticated()) { this.workouts = localItems; this.loading = false; return; }
     try {
       const cloud = await firstValueFrom(this.workoutApi.list({ page, size: 10 }));
       const names = await Promise.all(cloud.content.map(async workout => {
@@ -60,10 +62,12 @@ export class CalendarComponent implements OnInit {
       this.cloudPageNumber = cloud.number; this.cloudTotalPages = cloud.totalPages;
       this.workouts = [...localItems, ...cloud.content.map((workout, index) => ({ source: 'cloud' as const, id: workout.id, routineName: names[index], startedAt: workout.startedAt, finishedAt: workout.completedAt, exerciseCount: workout.exercises.length }))];
       this.cloudError = null;
+      this.loading = false;
     } catch {
       // Deliberately retain legacy records even when cloud history cannot load.
       this.workouts = rawLocal.map(workout => ({ source: 'local' as const, id: workout.id, routineName: workout.routineName, startedAt: workout.startedAt, finishedAt: workout.finishedAt, exerciseCount: workout.exercises.length, local: workout }));
       this.cloudError = 'No se pudo cargar todo el historial. Tus sesiones anteriores siguen disponibles.';
+      this.loading = false;
     }
   }
   async onDeleteWorkout(workout: CalendarWorkoutItem) { if (workout.source === 'local' && workout.local && confirm(this.t.t('calendar.deleteConfirm'))) { await WorkoutHistoryRepository.delete(workout.local.id); await this.loadWorkouts(); } }

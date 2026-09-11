@@ -1,40 +1,66 @@
-<div class="routine-page flex flex-col flex-1 bg-gray-50 pb-4">
-  <div class="app-page-header"><div class="app-kicker">Planifica</div><h1>{{ t.t('routines.title') }}</h1><p>{{ t.t('routines.subtitle') }}</p></div>
-  <div class="app-content flex-1">
-    <div class="routine-toolbar"><span>{{ routines.length }} rutinas disponibles</span><button type="button" (click)="startCreate()">+ Crear rutina</button></div>
-    @if (error(); as message) { <p class="mb-3 rounded-xl bg-red-50 p-3 text-sm font-medium text-red-700">{{ message }}</p> }
-    @if (cloudLoading) { <p class="mb-3 text-sm text-gray-500">Cargando rutinas…</p> }
-    @if (!loading && routines.length) {
-      @for (item of routines; track routineKey(item)) {
-        <div class="routine-card bg-white rounded-2xl shadow-md border border-gray-100 mb-3 px-4 py-4 flex items-center justify-between">
-          <div><div class="flex items-center gap-2"><div class="text-lg font-bold text-gray-900 mb-1">{{ item.routine.name }}</div></div>
-            @if (item.source === 'local') { <div class="text-gray-500 text-sm font-medium">{{ item.routine.exercises.length }} {{ t.t('routines.exercises') }}</div> } @else { <div class="text-gray-500 text-sm font-medium">{{ item.routine.description || 'Sin descripción' }}</div> }
-          </div>
-          <div class="flex gap-2"><button (click)="startEdit(item)" [disabled]="saving()" class="text-orange-600 text-sm font-bold px-3 py-1.5 rounded-lg bg-orange-50 disabled:opacity-50">{{ t.t('routines.edit') }}</button><button (click)="deleteRoutine(item)" [disabled]="saving()" class="text-red-600 text-sm font-bold px-3 py-1.5 rounded-lg bg-red-50 disabled:opacity-50">{{ t.t('routines.delete') }}</button></div>
-        </div>
-      }
-      @if (auth.isAuthenticated() && cloudTotalPages > 1) { <div class="mb-4 flex justify-between gap-3"><button (click)="previousCloudPage()" [disabled]="cloudPageNumber === 0" class="rounded-lg border px-3 py-2 text-sm font-bold disabled:opacity-40">Anterior</button><span class="py-2 text-sm text-gray-500">Página {{ cloudPageNumber + 1 }} de {{ cloudTotalPages }}</span><button (click)="nextCloudPage()" [disabled]="cloudPageNumber + 1 >= cloudTotalPages" class="rounded-lg border px-3 py-2 text-sm font-bold disabled:opacity-40">Siguiente</button></div> }
-    } @else if (!loading) { <div class="text-center text-gray-400 mt-10 font-medium">{{ t.t('routines.noRoutines') }}</div> }
+<div class="routines-page">
+  <header class="routines-head"><div><span>PLAN DE ENTRENAMIENTO</span><h1>Rutinas</h1><p>Ordena el trabajo antes de pisar la sala.</p></div><button type="button" (click)="startCreate()">Nueva rutina <b aria-hidden="true">+</b></button></header>
 
-    <div class="bg-white rounded-2xl shadow-md border border-gray-100 mt-6 px-4 py-5">
-      <h2 class="text-lg font-bold mb-3 text-gray-900">{{ editingLocal || editingCloud ? t.t('routines.editRoutine') : t.t('routines.createRoutine') }}</h2>
-      @if (isCloudEditor) {
-        <form (ngSubmit)="saveRoutine()" autocomplete="off">
-          <input [(ngModel)]="cloudDraft.name" name="cloudName" maxlength="150" required placeholder="{{ t.t('routines.routineName') }}" class="w-full mb-3 px-4 py-3 border-2 border-gray-300 rounded-xl" />
-          <textarea [(ngModel)]="cloudDraft.description" name="cloudDescription" maxlength="500" rows="2" placeholder="Descripción (opcional)" class="w-full mb-3 px-4 py-3 border-2 border-gray-300 rounded-xl"></textarea>
-          @for (exercise of cloudDraft.exercises; track exercise.exerciseId + $index; let i = $index) {
-            <div class="mb-3 rounded-xl border border-gray-200 bg-gray-50 p-3"><div class="mb-2 flex items-center justify-between gap-2 font-bold text-gray-900"><span>{{ i + 1 }}. {{ exercise.exerciseName }} <span class="text-xs font-medium text-gray-500">{{ exercise.exerciseSource === 'USER' ? 'Personalizado' : 'Catálogo' }}</span></span><span class="flex gap-1"><button type="button" (click)="moveCloudExercise(i, -1)" [disabled]="i === 0" class="text-xs" aria-label="Subir ejercicio">↑</button><button type="button" (click)="moveCloudExercise(i, 1)" [disabled]="i + 1 === cloudDraft.exercises.length" class="text-xs" aria-label="Bajar ejercicio">↓</button></span></div><div class="grid grid-cols-3 gap-2"><label class="text-xs font-bold text-gray-600">Series<input [(ngModel)]="exercise.sets" name="cloudSets{{i}}" type="number" min="1" required class="mt-1 w-full rounded-lg border p-2" /></label><label class="text-xs font-bold text-gray-600">Reps<input [(ngModel)]="exercise.targetReps" name="cloudReps{{i}}" type="number" min="1" required class="mt-1 w-full rounded-lg border p-2" /></label><label class="text-xs font-bold text-gray-600">Descanso (s)<input [(ngModel)]="exercise.restSeconds" name="cloudRest{{i}}" type="number" min="0" required class="mt-1 w-full rounded-lg border p-2" /></label></div><textarea [(ngModel)]="exercise.notes" name="cloudNotes{{i}}" maxlength="500" rows="2" placeholder="Notas (opcional)" class="mt-2 w-full rounded-lg border p-2 text-sm"></textarea><button type="button" (click)="removeCloudExercise(i)" class="mt-2 text-sm font-bold text-red-600">{{ t.t('routines.delete') }}</button></div>
+  <main class="routines-layout" [class.routines-layout--editing]="editorOpen">
+    <section class="program-list" aria-labelledby="program-list-title">
+      <header><h2 id="program-list-title">{{ routines.length }} planes listos</h2><span>Toca editar para cambiar el orden</span></header>
+      @if (error(); as message) { <p class="routine-error" role="alert">{{ message }}</p> }
+      @if (loading || cloudLoading) { <div class="routine-loading" aria-live="polite" aria-busy="true"><i></i><i></i><i></i><span>Cargando rutinas…</span></div> }
+      @if (!loading && routines.length) {
+        <ol>
+          @for (item of routines; track routineKey(item); let i = $index) {
+            <li>
+              <span class="program-index">{{ i + 1 | number:'2.0-0' }}</span>
+              <div class="program-main"><strong>{{ item.routine.name }}</strong>@if (item.source === 'local') { <span>{{ item.routine.exercises.length }} ejercicios</span><div class="exercise-preview">@for (exercise of item.routine.exercises.slice(0, 3); track exercise.id) { <i>{{ exercise.name }}</i> }</div> } @else { <span>{{ item.routine.description || 'Plan sincronizado' }}</span> }</div>
+              <div class="program-actions"><a href="/select-routine">Entrenar</a><button type="button" (click)="startEdit(item)" [disabled]="saving()">Editar</button><button type="button" (click)="deleteRoutine(item)" [disabled]="saving()" aria-label="Eliminar rutina">Eliminar</button></div>
+            </li>
           }
-          <button type="button" (click)="openSelector()" class="mt-1 w-full rounded-xl bg-orange-600 px-3 py-3 font-bold text-white">Seleccionar ejercicio del catálogo</button>
-          <div class="flex gap-3 mt-4"><button type="submit" [disabled]="saving() || !cloudDraft.name.trim()" class="flex-1 rounded-xl bg-green-600 px-4 py-3 font-bold text-white disabled:opacity-50">{{ t.t('routines.save') }}</button><button type="button" (click)="cancelEdit()" class="flex-1 rounded-xl border-2 border-gray-300 px-4 py-3 font-bold">{{ t.t('routines.cancel') }}</button></div>
-        </form>
-      } @else {
-        <form (ngSubmit)="saveRoutine()" autocomplete="off"><input [(ngModel)]="localName" name="routineName" placeholder="{{ t.t('routines.routineName') }}" required class="w-full mb-3 px-4 py-3 border-2 border-gray-300 rounded-xl" />
-          @for (exercise of localExercises; track exercise.id; let i = $index) { <div class="mb-3 rounded-xl border border-gray-200 bg-gray-50 p-3"><div class="mb-2 flex items-center justify-between"><span class="app-kicker">Ejercicio {{ i + 1 }}</span><span class="flex gap-1"><button type="button" (click)="moveLocalExercise(i, -1)" [disabled]="i === 0" class="text-xs" aria-label="Subir ejercicio">↑</button><button type="button" (click)="moveLocalExercise(i, 1)" [disabled]="i + 1 === localExercises.length" class="text-xs" aria-label="Bajar ejercicio">↓</button></span></div><div class="flex gap-2"><input [(ngModel)]="exercise.name" name="exerciseName{{i}}" placeholder="{{ t.t('routines.exerciseName') }}" class="flex-1 min-w-0 rounded-lg border-2 border-gray-300 px-3 py-2" /><input [(ngModel)]="exercise.setsCount" name="exerciseSets{{i}}" type="number" min="1" max="10" class="w-16 rounded-lg border-2 border-gray-300 px-2 py-2" /></div><button type="button" (click)="removeLocalExercise(i)" class="mt-2 text-sm font-bold text-red-600">{{ t.t('routines.delete') }}</button></div> }
-          <button type="button" (click)="addLocalExerciseBlock()" class="mt-1 w-full rounded-xl bg-orange-600 px-3 py-3 font-bold text-white">{{ t.t('routines.addExercise') }}</button><div class="flex gap-3 mt-4"><button type="submit" [disabled]="!localName.trim() || !localExercises.length" class="flex-1 rounded-xl bg-green-600 px-4 py-3 font-bold text-white disabled:opacity-50">{{ t.t('routines.save') }}</button><button type="button" (click)="cancelEdit()" class="flex-1 rounded-xl border-2 border-gray-300 px-4 py-3 font-bold">{{ t.t('routines.cancel') }}</button></div>
-        </form>
+        </ol>
+        @if (auth.isAuthenticated() && cloudTotalPages > 1) { <nav class="pagination" aria-label="Páginas de rutinas"><button (click)="previousCloudPage()" [disabled]="cloudPageNumber === 0">Anterior</button><span>{{ cloudPageNumber + 1 }} / {{ cloudTotalPages }}</span><button (click)="nextCloudPage()" [disabled]="cloudPageNumber + 1 >= cloudTotalPages">Siguiente</button></nav> }
+      } @else if (!loading) {
+        <div class="routine-empty"><span aria-hidden="true">01</span><h2>No hay una rutina preparada</h2><p>Crea un orden de ejercicios para entrar a entrenar sin improvisar.</p><button type="button" (click)="startCreate()">Crear primera rutina</button></div>
       }
-    </div>
-  </div>
+    </section>
+
+    @if (editorOpen) {
+      <aside class="routine-studio" aria-labelledby="routine-editor-title">
+        <header><div><span>{{ editingLocal || editingCloud ? 'EDITANDO PLAN' : 'NUEVO PLAN' }}</span><h2 id="routine-editor-title">{{ editingLocal || editingCloud ? 'Ajusta la rutina' : 'Construye la rutina' }}</h2></div><button type="button" (click)="cancelEdit()" aria-label="Cerrar editor">×</button></header>
+        @if (isCloudEditor) {
+          <form (ngSubmit)="saveRoutine()" autocomplete="off">
+            <label class="routine-name">Nombre<input [(ngModel)]="cloudDraft.name" name="cloudName" maxlength="150" required placeholder="Ej. Fuerza A…" autocomplete="off"></label>
+            <label class="routine-description">Descripción<textarea [(ngModel)]="cloudDraft.description" name="cloudDescription" maxlength="500" rows="2" placeholder="Intención del plan…" autocomplete="off"></textarea></label>
+            <div class="editor-sequence">
+              <div class="sequence-head"><strong>Orden de trabajo</strong><span>{{ cloudDraft.exercises.length }} ejercicios</span></div>
+              @for (exercise of cloudDraft.exercises; track exercise.exerciseId + $index; let i = $index) {
+                <section class="sequence-row">
+                  <span class="sequence-grip" aria-hidden="true">{{ i + 1 | number:'2.0-0' }}</span>
+                  <div class="sequence-title"><strong>{{ exercise.exerciseName }}</strong><span>{{ exercise.exerciseSource === 'USER' ? 'Personalizado' : 'Catálogo' }}</span></div>
+                  <div class="sequence-move"><button type="button" (click)="moveCloudExercise(i, -1)" [disabled]="i === 0" aria-label="Subir ejercicio">↑</button><button type="button" (click)="moveCloudExercise(i, 1)" [disabled]="i + 1 === cloudDraft.exercises.length" aria-label="Bajar ejercicio">↓</button></div>
+                  <div class="sequence-values"><label>Series<input [(ngModel)]="exercise.sets" name="cloudSets{{i}}" type="number" inputmode="numeric" min="1" required></label><label>Reps<input [(ngModel)]="exercise.targetReps" name="cloudReps{{i}}" type="number" inputmode="numeric" min="1" required></label><label>Descanso<input [(ngModel)]="exercise.restSeconds" name="cloudRest{{i}}" type="number" inputmode="numeric" min="0" required></label></div>
+                  <label class="sequence-note">Nota<textarea [(ngModel)]="exercise.notes" name="cloudNotes{{i}}" maxlength="500" rows="1" placeholder="Indicación opcional…" autocomplete="off"></textarea></label>
+                  <button type="button" class="sequence-remove" (click)="removeCloudExercise(i)">Quitar</button>
+                </section>
+              }
+              <button type="button" (click)="openSelector()" class="add-exercise">Añadir desde el catálogo <span aria-hidden="true">+</span></button>
+            </div>
+            <footer><button type="button" (click)="cancelEdit()">Cancelar</button><button type="submit" [disabled]="saving() || !cloudDraft.name.trim()">{{ saving() ? 'Guardando…' : 'Guardar rutina' }}</button></footer>
+          </form>
+        } @else {
+          <form (ngSubmit)="saveRoutine()" autocomplete="off">
+            <label class="routine-name">Nombre<input [(ngModel)]="localName" name="routineName" required placeholder="Ej. Fuerza A…" autocomplete="off"></label>
+            <div class="editor-sequence">
+              <div class="sequence-head"><strong>Orden de trabajo</strong><span>{{ localExercises.length }} ejercicios</span></div>
+              @for (exercise of localExercises; track exercise.id; let i = $index) {
+                <section class="sequence-row sequence-row--local"><span class="sequence-grip">{{ i + 1 | number:'2.0-0' }}</span><label class="sequence-title">Ejercicio<input [(ngModel)]="exercise.name" name="exerciseName{{i}}" placeholder="Nombre del ejercicio…" autocomplete="off"></label><label class="local-sets">Series<input [(ngModel)]="exercise.setsCount" name="exerciseSets{{i}}" type="number" inputmode="numeric" min="1" max="10"></label><div class="sequence-move"><button type="button" (click)="moveLocalExercise(i, -1)" [disabled]="i === 0" aria-label="Subir ejercicio">↑</button><button type="button" (click)="moveLocalExercise(i, 1)" [disabled]="i + 1 === localExercises.length" aria-label="Bajar ejercicio">↓</button></div><button type="button" class="sequence-remove" (click)="removeLocalExercise(i)">Quitar</button></section>
+              }
+              <button type="button" (click)="addLocalExerciseBlock()" class="add-exercise">Añadir ejercicio <span aria-hidden="true">+</span></button>
+            </div>
+            <footer><button type="button" (click)="cancelEdit()">Cancelar</button><button type="submit" [disabled]="!localName.trim() || !localExercises.length">Guardar rutina</button></footer>
+          </form>
+        }
+      </aside>
+    }
+  </main>
 </div>
-@if (selectorOpen) { <div class="fixed inset-0 z-50 overflow-y-auto bg-black/40 p-4"><div class="mx-auto mt-8 max-w-lg rounded-2xl bg-white p-4 shadow-xl"><div class="mb-3 flex justify-between gap-3"><h2 class="text-lg font-bold">Elegir ejercicio</h2><button (click)="closeSelector()" class="font-bold text-gray-600">Cerrar</button></div><form (ngSubmit)="searchSelector()" class="mb-3 flex gap-2"><input [(ngModel)]="selectorSearch" name="selectorSearch" placeholder="Buscar" class="min-w-0 flex-1 rounded-lg border p-2" /><button class="rounded-lg bg-orange-600 px-3 py-2 font-bold text-white">Buscar</button></form>@if (selectorError(); as message) { <p class="rounded-lg bg-red-50 p-2 text-sm text-red-700">{{ message }}</p> } @if (selectorLoading) { <p class="text-sm text-gray-500">Cargando catálogo…</p> } @for (exercise of selectorPage()?.content ?? []; track exercise.id) { <button type="button" (click)="selectCloudExercise(exercise)" class="mb-2 w-full rounded-lg border p-3 text-left hover:bg-orange-50"><span class="font-bold">{{ exerciseName(exercise) }}</span><span class="ml-2 text-xs text-gray-500">{{ exercise.source === 'USER' ? 'Personalizado' : 'Catálogo' }}</span></button> } @if (selectorPage(); as page) { <div class="mt-3 flex justify-between"><button (click)="previousSelectorPage()" [disabled]="selectorPageNumber === 0" class="rounded border px-2 py-1 disabled:opacity-40">Anterior</button><span class="text-sm text-gray-500">{{ page.page + 1 }}/{{ page.totalPages }}</span><button (click)="nextSelectorPage()" [disabled]="selectorPageNumber + 1 >= page.totalPages" class="rounded border px-2 py-1 disabled:opacity-40">Siguiente</button></div> }</div></div> }
+
+@if (selectorOpen) { <div class="exercise-sheet" (click)="closeSelector()"><section role="dialog" aria-modal="true" aria-labelledby="selector-title" (click)="$event.stopPropagation()"><header><div><span>CATÁLOGO</span><h2 id="selector-title">Elige un ejercicio</h2></div><button type="button" (click)="closeSelector()">Cerrar</button></header><form (ngSubmit)="searchSelector()"><label class="sr-only" for="selector-search">Buscar ejercicio</label><input id="selector-search" [(ngModel)]="selectorSearch" name="selectorSearch" type="search" placeholder="Buscar por nombre…" autocomplete="off"><button>Buscar</button></form>@if (selectorError(); as message) { <p role="alert">{{ message }}</p> } @if (selectorLoading) { <p aria-live="polite">Cargando catálogo…</p> }<div class="selector-results">@for (exercise of selectorPage()?.content ?? []; track exercise.id) { <button type="button" (click)="selectCloudExercise(exercise)"><strong>{{ exerciseName(exercise) }}</strong><span>{{ exercise.source === 'USER' ? 'Personalizado' : 'Catálogo' }}</span><i aria-hidden="true">+</i></button> }</div>@if (selectorPage(); as page) { <nav class="pagination"><button type="button" (click)="previousSelectorPage()" [disabled]="selectorPageNumber === 0">Anterior</button><span>{{ page.page + 1 }} / {{ page.totalPages }}</span><button type="button" (click)="nextSelectorPage()" [disabled]="selectorPageNumber + 1 >= page.totalPages">Siguiente</button></nav> }</section></div> }

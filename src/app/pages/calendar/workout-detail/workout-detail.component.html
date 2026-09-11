@@ -1,85 +1,55 @@
-<div class="workout-detail-page flex flex-col bg-gray-50 pb-4" style="min-height: 100dvh;">
-  @if (cloudWorkout) {
-    <div class="bg-gradient-to-br from-orange-500 to-orange-700 text-white px-4 pt-4 pb-6 shadow-lg"><h1 class="text-2xl font-bold mb-1">{{ cloudRoutineName }}</h1><div class="text-orange-100 text-sm">{{ (cloudWorkout.completedAt || cloudWorkout.startedAt) | date:'medium' }}</div></div>
-    <div class="flex-1 px-4 pt-4 pb-4"><div class="mb-3 rounded-xl bg-sky-50 p-3 text-sm text-sky-800">Las series registradas son de solo lectura.</div>
-      @for (ex of cloudWorkout.exercises; track ex.id) { <div class="mb-4 bg-white rounded-2xl shadow-md border border-gray-100 p-4"><div class="font-bold text-gray-900 mb-1 text-lg">{{ cloudExerciseName(ex.exerciseId) }}</div>@if (ex.notes) { <div class="mb-3 text-sm text-gray-500 whitespace-pre-line">{{ ex.notes }}</div> }<table class="w-full text-sm"><thead><tr class="border-b-2 border-gray-200"><th class="text-left py-2">#</th><th class="text-center py-2">Reps</th><th class="text-center py-2">kg</th><th class="text-center py-2">RPE</th></tr></thead><tbody>@for (set of ex.sets; track set.id) { <tr class="border-b border-gray-100"><td class="py-2">{{ set.setNumber }}</td><td class="py-2 text-center">{{ set.reps }}</td><td class="py-2 text-center">{{ set.weight }}</td><td class="py-2 text-center">{{ set.rpe ?? '—' }}</td></tr> }</tbody></table></div> }
-      @if (cloudWorkout.notes) { <div class="rounded-xl bg-white p-4 shadow-sm"><div class="text-xs font-semibold text-gray-600">Notas</div><div class="mt-1 whitespace-pre-line">{{ cloudWorkout.notes }}</div></div> }
-    </div>
-  } @else {
-  <!-- Header (view mode) -->
-  <div *ngIf="!editMode()" class="bg-gradient-to-br from-orange-500 to-orange-700 text-white px-4 pt-4 pb-6 shadow-lg">
-    <h1 class="text-2xl font-bold mb-1">{{ workout?.routineName }}</h1>
-    <div class="text-orange-100 text-sm">{{ workout?.finishedAt | date:'medium' }}</div>
-  </div>
+<div class="record-page">
+  <header class="record-mast">
+    <button type="button" (click)="router.navigate(['/calendar'])">← Historial</button>
+    @if (cloudWorkout) {
+      <div><span>REGISTRO DE SESIÓN</span><h1>{{ cloudRoutineName }}</h1><time>{{ (cloudWorkout.completedAt || cloudWorkout.startedAt) | date:'medium' }}</time></div>
+      <p>Solo lectura · guardado en tu cuenta</p>
+    } @else if (editMode()) {
+      <div><span>EDITANDO REGISTRO</span><h1>{{ editedWorkout?.routineName }}</h1><time>{{ editedWorkout?.finishedAt | date:'medium' }}</time></div>
+    } @else if (workout) {
+      <div><span>REGISTRO DE SESIÓN</span><h1>{{ workout.routineName }}</h1><time>{{ workout.finishedAt | date:'medium' }}</time></div>
+      <p>Guardado en este dispositivo</p>
+    }
+  </header>
 
-  <!-- Header (edit mode) -->
-  <div *ngIf="editMode()" class="bg-gradient-to-br from-orange-500 to-orange-700 text-white px-4 pt-4 pb-6 shadow-lg">
-    <h1 class="text-2xl font-bold mb-1">{{ editedWorkout?.routineName }}</h1>
-    <div class="text-orange-100 text-sm">{{ editedWorkout?.finishedAt | date:'medium' }}</div>
-  </div>
-
-  <!-- View Mode -->
-  <div *ngIf="!editMode()" class="flex-1 px-4 pt-4 pb-4">
-    <div *ngFor="let ex of workout?.exercises; let exIdx = index" class="mb-4 bg-white rounded-2xl shadow-md border border-gray-100 p-4">
-      <div class="font-bold text-gray-900 mb-3 text-lg">{{ ex?.name }}</div>
-      <div class="overflow-x-auto -mx-4 px-4">
-        <table class="w-full text-sm border-collapse min-w-[280px]">
-          <thead>
-            <tr class="border-b-2 border-gray-200">
-              <th class="text-left py-2 px-2 text-gray-600 font-semibold">#</th>
-              <th class="text-center py-2 px-2 text-gray-600 font-semibold">{{ t.t('addWorkout.repsPlaceholder') }}</th>
-              <th class="text-center py-2 px-2 text-gray-600 font-semibold">{{ t.t('addWorkout.kgPlaceholder') }}</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr *ngFor="let set of ex?.sets; let setIdx = index" class="border-b border-gray-100">
-              <td class="py-2 px-2 text-gray-500">{{ setIdx + 1 }}</td>
-              <td class="py-2 px-2 text-center font-medium text-gray-900">{{ set?.reps ?? '—' }}</td>
-              <td class="py-2 px-2 text-center font-medium text-gray-900">{{ set?.weight ?? '—' }}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-      <div *ngIf="ex?.observation" class="mt-3 p-3 bg-blue-50 border-l-4 border-blue-500 rounded-lg">
-        <div class="text-xs font-semibold text-blue-700 mb-1">Observaciones</div>
-        <div class="text-sm text-gray-700 whitespace-pre-line">{{ ex?.observation }}</div>
-      </div>
-    </div>
-    <button (click)="startEdit()" class="w-full bg-orange-600 hover:bg-orange-700 text-white px-4 py-4 rounded-xl font-bold shadow-lg active:scale-95 transition-all">{{ t.t('routines.edit') }}</button>
-  </div>
-
-  <!-- Edit Mode -->
-  <div *ngIf="editMode()" class="flex-1 px-4 pt-4 pb-4">
-    <div *ngFor="let ex of editedWorkout?.exercises; let exIdx = index" class="mb-4 bg-white rounded-2xl shadow-md border border-gray-100 p-4">
-      <div class="font-bold text-gray-900 mb-3 text-lg">{{ ex?.name }}</div>
-      <div class="overflow-x-auto -mx-4 px-4">
-        <table class="w-full text-sm border-collapse min-w-[280px]">
-          <thead>
-            <tr class="border-b-2 border-gray-200">
-              <th class="text-left py-2 px-2 text-gray-600 font-semibold w-12">#</th>
-              <th class="text-center py-2 px-2 text-gray-600 font-semibold">{{ t.t('addWorkout.repsPlaceholder') }}</th>
-              <th class="text-center py-2 px-2 text-gray-600 font-semibold">{{ t.t('addWorkout.kgPlaceholder') }}</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr *ngFor="let set of ex?.sets; let setIdx = index" class="border-b border-gray-100">
-              <td class="py-2 px-2 text-gray-500">{{ setIdx + 1 }}</td>
-              <td class="py-2 px-1"><input type="number" class="w-full min-w-[60px] px-2 py-2 border-2 border-orange-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-center font-medium" [(ngModel)]="ex.sets[setIdx].reps"></td>
-              <td class="py-2 px-1"><input type="number" class="w-full min-w-[60px] px-2 py-2 border-2 border-orange-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-center font-medium" [(ngModel)]="ex.sets[setIdx].weight"></td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-      <div class="mt-3 pt-3 border-t border-gray-200">
-        <label class="block text-xs font-semibold text-gray-600 mb-2">{{ t.t('training.observationPlaceholder') }}</label>
-        <textarea [(ngModel)]="ex.observation" rows="3" class="w-full border-2 border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500" placeholder="{{ t.t('training.observationPlaceholder') }}"></textarea>
-      </div>
-    </div>
-    <div class="flex gap-3 mt-6">
-      <button (click)="saveEdit()" class="flex-1 bg-green-600 hover:bg-green-700 text-white px-4 py-4 rounded-xl font-bold shadow-lg active:scale-95 transition-all">{{ t.t('addWorkout.save') }}</button>
-      <button (click)="cancelEdit()" class="flex-1 bg-white border-2 border-gray-300 text-gray-800 px-4 py-4 rounded-xl font-bold shadow-md active:scale-95 transition-transform">{{ t.t('addWorkout.cancel') }}</button>
-    </div>
-  </div>
-  }
-  @if (cloudError) { <p class="p-4 text-red-700">{{ cloudError }}</p> }
+  <main class="record-body">
+    @if (cloudError) {
+      <section class="record-error" role="alert"><strong>No se pudo abrir el registro</strong><p>{{ cloudError }}</p><button type="button" (click)="router.navigate(['/calendar'])">Volver al historial</button></section>
+    } @else if (cloudWorkout) {
+      <div class="record-intro"><strong>{{ cloudWorkout.exercises.length }}</strong><span>ejercicios registrados</span></div>
+      <section class="record-ledger" aria-label="Ejercicios registrados">
+        @for (ex of cloudWorkout.exercises; track ex.id; let i = $index) {
+          <article class="record-exercise">
+            <header><b>{{ (i + 1).toString().padStart(2, '0') }}</b><div><h2>{{ cloudExerciseName(ex.exerciseId) }}</h2>@if (ex.notes) { <p>{{ ex.notes }}</p> }</div></header>
+            <div class="record-table record-table--cloud"><div class="record-table__head"><span>SET</span><span>KG</span><span>REPS</span><span>RPE</span></div>@for (set of ex.sets; track set.id) { <div class="record-row"><span>{{ set.setNumber }}</span><strong>{{ set.weight }}</strong><strong>{{ set.reps }}</strong><strong>{{ set.rpe ?? '—' }}</strong></div> }</div>
+          </article>
+        }
+      </section>
+      @if (cloudWorkout.notes) { <section class="record-notes"><h2>Notas de la sesión</h2><p>{{ cloudWorkout.notes }}</p></section> }
+    } @else if (!editMode() && workout) {
+      <div class="record-intro"><strong>{{ workout.exercises.length }}</strong><span>ejercicios registrados</span></div>
+      <section class="record-ledger" aria-label="Ejercicios registrados">
+        @for (ex of workout.exercises; track $index; let i = $index) {
+          <article class="record-exercise">
+            <header><b>{{ (i + 1).toString().padStart(2, '0') }}</b><div><h2>{{ ex.name }}</h2>@if (ex.observation) { <p>{{ ex.observation }}</p> }</div></header>
+            <div class="record-table"><div class="record-table__head"><span>SET</span><span>KG</span><span>REPS</span></div>@for (set of ex.sets; track $index; let setIndex = $index) { <div class="record-row"><span>{{ setIndex + 1 }}</span><strong>{{ set.weight ?? '—' }}</strong><strong>{{ set.reps ?? '—' }}</strong></div> }</div>
+          </article>
+        }
+      </section>
+      <button type="button" class="record-edit" (click)="startEdit()">Editar registro</button>
+    } @else if (editMode() && editedWorkout) {
+      <section class="record-ledger" aria-label="Editar ejercicios registrados">
+        @for (ex of editedWorkout.exercises; track $index; let i = $index) {
+          <article class="record-exercise record-exercise--editing">
+            <header><b>{{ (i + 1).toString().padStart(2, '0') }}</b><div><h2>{{ ex.name }}</h2></div></header>
+            <div class="record-table"><div class="record-table__head"><span>SET</span><span>KG</span><span>REPS</span></div>@for (set of ex.sets; track $index; let setIndex = $index) { <div class="record-row"><span>{{ setIndex + 1 }}</span><label><span class="sr-only">Peso, serie {{ setIndex + 1 }}</span><input type="number" inputmode="decimal" [(ngModel)]="ex.sets[setIndex].weight"></label><label><span class="sr-only">Repeticiones, serie {{ setIndex + 1 }}</span><input type="number" inputmode="numeric" [(ngModel)]="ex.sets[setIndex].reps"></label></div> }</div>
+            <label class="record-observation">Observaciones<textarea [(ngModel)]="ex.observation" rows="3" [placeholder]="t.t('training.observationPlaceholder')"></textarea></label>
+          </article>
+        }
+      </section>
+      <footer class="record-actions"><button type="button" (click)="cancelEdit()">Cancelar</button><button type="button" (click)="saveEdit()">Guardar cambios</button></footer>
+    } @else {
+      <section class="session-loading" aria-live="polite" aria-busy="true"><span></span><span></span><p>Cargando registro…</p></section>
+    }
+  </main>
 </div>
