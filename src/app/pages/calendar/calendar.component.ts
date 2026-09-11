@@ -44,8 +44,8 @@ export class CalendarComponent implements OnInit {
     try {
       const cloud = await firstValueFrom(this.workoutApi.list({ page, size: 10 }));
       const names = await Promise.all(cloud.content.map(async workout => {
-        if (!workout.routineId) return 'Rutina cloud';
-        try { return (await firstValueFrom(this.routineApi.get(workout.routineId))).name; } catch { return 'Rutina cloud'; }
+        if (!workout.routineId) return 'Rutina sin nombre';
+        try { return (await firstValueFrom(this.routineApi.get(workout.routineId))).name; } catch { return 'Rutina sin nombre'; }
       }));
       this.cloudPageNumber = cloud.number; this.cloudTotalPages = cloud.totalPages;
       this.workouts = [...localItems, ...cloud.content.map((workout, index) => ({ source: 'cloud' as const, id: workout.id, routineName: names[index], startedAt: workout.startedAt, finishedAt: workout.completedAt, exerciseCount: workout.exercises.length }))];
@@ -53,7 +53,7 @@ export class CalendarComponent implements OnInit {
     } catch {
       // Deliberately retain legacy records even when cloud history cannot load.
       this.workouts = localItems;
-      this.cloudError = 'No se pudo cargar el historial cloud. Tu historial local sigue disponible.';
+      this.cloudError = 'No se pudo cargar todo el historial. Tus sesiones anteriores siguen disponibles.';
     }
   }
   async onDeleteWorkout(workout: CalendarWorkoutItem) { if (workout.source === 'local' && workout.local && confirm(this.t.t('calendar.deleteConfirm'))) { await WorkoutHistoryRepository.delete(workout.local.id); await this.loadWorkouts(); } }

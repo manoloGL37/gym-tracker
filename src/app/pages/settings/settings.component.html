@@ -15,16 +15,16 @@
       <label class="block text-sm font-bold uppercase tracking-wide text-gray-700 mb-3">Cuenta</label>
       @if (auth.isAuthenticated()) {
         <p class="font-semibold text-gray-900">{{ auth.currentUser()?.email }}</p>
-        <p class="text-xs text-gray-500 mt-1">Cuenta conectada. Los entrenamientos existentes siguen siendo locales hasta la próxima fase.</p>
+        <p class="text-xs text-gray-500 mt-1">Cuenta conectada. Tus entrenamientos anteriores no se modifican automáticamente.</p>
         <a routerLink="/exercise-catalog" class="block w-full mt-3 text-center px-4 py-3 rounded-lg font-semibold text-sm bg-orange-600 text-white shadow hover:bg-orange-700 transition-all">Catálogo de ejercicios</a>
         <button (click)="logout()" class="w-full mt-3 px-4 py-3 rounded-lg font-semibold text-sm bg-gray-800 text-white shadow hover:bg-gray-900 transition-all">Cerrar sesión</button>
       } @else if (auth.isInitializing()) {
         <p class="text-sm text-gray-600">Comprobando la sesión…</p>
-      } @else if (auth.initializationStatus() === 'unavailable' && auth.hasStoredToken()) {
-        <p class="text-sm text-gray-600">No se pudo verificar la sesión. Tus datos locales siguen disponibles.</p>
+      } @else if (auth.initializationStatus() === 'unavailable') {
+        <p class="text-sm text-gray-600">No se pudo verificar la sesión. Tus datos siguen disponibles.</p>
         <button (click)="retryAuthInitialization()" class="w-full mt-3 px-4 py-3 rounded-lg font-semibold text-sm bg-orange-600 text-white shadow hover:bg-orange-700 transition-all">Reintentar conexión</button>
       } @else {
-        <p class="text-sm text-gray-600">Modo local: puedes usar la aplicación sin cuenta.</p>
+        <p class="text-sm text-gray-600">Puedes usar la aplicación sin cuenta.</p>
         <div class="flex gap-2 mt-3">
           <a routerLink="/login" class="flex-1 text-center px-4 py-3 rounded-lg font-semibold text-sm bg-orange-600 text-white shadow hover:bg-orange-700 transition-all">Iniciar sesión</a>
           <a routerLink="/register" class="flex-1 text-center px-4 py-3 rounded-lg font-semibold text-sm bg-gray-100 text-gray-800 border border-gray-300 shadow hover:bg-gray-200 transition-all">Crear cuenta</a>
@@ -34,14 +34,14 @@
 
     @if (auth.isAuthenticated() && migrationPreview(); as preview) {
       <div class="bg-white rounded-2xl shadow-md border border-gray-100 p-5">
-        <label class="block text-sm font-bold uppercase tracking-wide text-gray-700 mb-3">Migración a cloud</label>
-        <p class="text-sm text-gray-600">La migración es opcional. No borra tus datos locales ni tus copias de seguridad.</p>
+        <label class="block text-sm font-bold uppercase tracking-wide text-gray-700 mb-3">Guardar datos en tu cuenta</label>
+        <p class="text-sm text-gray-600">Este traslado es opcional. No borra tus datos anteriores ni tus copias de seguridad.</p>
         <div class="mt-3 grid grid-cols-2 gap-2 text-xs text-gray-700">
-          <div>Rutinas locales: {{ preview.routines }}</div><div>Historial local: {{ preview.workouts }}</div>
+          <div>Rutinas anteriores: {{ preview.routines }}</div><div>Historial anterior: {{ preview.workouts }}</div>
           <div>Referencias de ejercicios: {{ preview.exerciseReferences }}</div><div>Sin resolver: {{ preview.unresolvedExercises }}</div>
           <div>Históricos no compatibles: {{ preview.unsupportedWorkouts }}</div><div>Peso corporal local: {{ preview.bodyWeightEntries }}</div>
         </div>
-        @if (preview.activeTraining) { <p class="mt-3 rounded-lg bg-amber-50 p-2 text-xs text-amber-800">Hay un entrenamiento activo local: se conserva y no se migra. Termínalo localmente cuando quieras.</p> }
+        @if (preview.activeTraining) { <p class="mt-3 rounded-lg bg-amber-50 p-2 text-xs text-amber-800">Hay un entrenamiento en curso: se conserva y no se traslada. Termínalo cuando quieras.</p> }
         @if (preview.observations) { <p class="mt-2 rounded-lg bg-amber-50 p-2 text-xs text-amber-800">{{ preview.observations }} observaciones por ejercicio se conservarán solo en local; la API no tiene ese campo.</p> }
         @if (preview.bodyWeightEntries) { <p class="mt-2 text-xs text-gray-500">El peso corporal no se migra: el backend no ofrece almacenamiento para él.</p> }
         @if (preview.hasOtherAccountMigration) { <p class="mt-2 rounded-lg bg-amber-50 p-2 text-xs text-amber-800">Este dispositivo contiene una migración de otra cuenta. Sus UUID cloud nunca se reutilizarán aquí.</p> }
@@ -57,7 +57,7 @@
               @for (reference of unresolvedExercises(); track reference.key) { <button (click)="openExerciseResolution(reference)" class="w-full rounded-lg border p-3 text-left text-sm font-semibold hover:bg-orange-50">{{ reference.name || 'Ejercicio sin nombre' }} <span class="float-right text-orange-700">Resolver</span></button> }
             </div>
           }
-          <div class="mt-4 flex gap-2"><button (click)="startMigration()" [disabled]="migrationBusy()" class="flex-1 rounded-lg bg-orange-600 px-3 py-3 text-sm font-bold text-white disabled:opacity-50">{{ migrationLedger()?.status === 'partial-failure' ? 'Reintentar migración' : 'Migrar datos locales a cloud' }}</button><button (click)="postponeMigration()" [disabled]="migrationBusy()" class="rounded-lg border px-3 py-3 text-sm font-bold">Ahora no</button></div>
+          <div class="mt-4 flex gap-2"><button (click)="startMigration()" [disabled]="migrationBusy()" class="flex-1 rounded-lg bg-orange-600 px-3 py-3 text-sm font-bold text-white disabled:opacity-50">{{ migrationLedger()?.status === 'partial-failure' ? 'Reintentar traslado' : 'Guardar en tu cuenta' }}</button><button (click)="postponeMigration()" [disabled]="migrationBusy()" class="rounded-lg border px-3 py-3 text-sm font-bold">Ahora no</button></div>
         } @else { <p class="mt-3 text-sm text-gray-600">No hay rutinas ni históricos locales pendientes. Las preferencias, copias, entrenamiento activo y peso corporal permanecen locales.</p> }
         @if (migrationError(); as error) { <p class="mt-3 text-sm text-red-700">{{ error }}</p> }
       </div>

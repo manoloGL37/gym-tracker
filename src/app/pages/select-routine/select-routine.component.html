@@ -8,8 +8,8 @@
         @for (item of routines; track routineKey(item); let i = $index) {
           <button (click)="selectRoutine(item)" class="routine-launch">
             <span class="routine-launch__index">{{ i + 1 }}</span>
-            <span class="routine-launch__body"><strong>{{ item.routine.name }}</strong><small>@if (item.source === 'local') { {{ item.routine.exercises.length }} {{ t.t('routines.exercises') }} } @else { Rutina guardada en tu cuenta }</small></span>
-            <span class="source-badge" [class.source-badge--cloud]="item.source === 'cloud'">{{ item.source === 'cloud' ? 'Cuenta' : 'Dispositivo' }}</span><span class="routine-launch__arrow" aria-hidden="true">→</span>
+            <span class="routine-launch__body"><strong>{{ item.routine.name }}</strong><small>@if (item.source === 'local') { {{ item.routine.exercises.length }} ejercicios } @else { Lista para entrenar }</small></span>
+            <span class="routine-launch__arrow" aria-hidden="true">→</span>
           </button>
         }
       </div>

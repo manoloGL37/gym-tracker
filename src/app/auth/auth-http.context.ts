@@ -1,4 +1,7 @@
 import { HttpContextToken } from '@angular/common/http';
 
-/** Public auth endpoints do not need an existing bearer token or session invalidation on 401. */
+/** Login, refresh, logout and other public calls must never recursively trigger refresh. */
 export const SKIP_AUTH_INTERCEPTOR = new HttpContextToken<boolean>(() => false);
+
+/** A protected request may be replayed at most once after refreshing its access token. */
+export const AUTH_RETRY_ATTEMPTED = new HttpContextToken<boolean>(() => false);

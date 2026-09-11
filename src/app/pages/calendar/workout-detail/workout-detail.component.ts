@@ -28,7 +28,7 @@ export class WorkoutDetailComponent implements OnInit {
   editMode = signal(false);
   editedWorkout: WorkoutHistory | null = null;
   cloudWorkout: WorkoutResponse | null = null;
-  cloudRoutineName = 'Rutina cloud';
+  cloudRoutineName = 'Rutina sin nombre';
   cloudExerciseNames = new Map<string, string>();
   cloudError: string | null = null;
   private readonly workoutApi = inject(WorkoutApiService);
@@ -52,7 +52,7 @@ export class WorkoutDetailComponent implements OnInit {
       await Promise.all(this.cloudWorkout.exercises.map(async exercise => {
         try { this.cloudExerciseNames.set(exercise.exerciseId, getExerciseName(await firstValueFrom(this.exerciseApi.get(exercise.exerciseId)), this.t.lang())); } catch { /* use UUID below; no name matching */ }
       }));
-    } catch { this.cloudError = 'No se pudo cargar este entrenamiento cloud.'; }
+    } catch { this.cloudError = 'No se pudo cargar este entrenamiento.'; }
   }
   cloudExerciseName(exerciseId: string): string { return this.cloudExerciseNames.get(exerciseId) ?? exerciseId; }
 

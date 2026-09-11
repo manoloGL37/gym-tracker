@@ -178,8 +178,12 @@ export class SettingsComponent implements OnInit {
     await this.auth.retryInitialization();
   }
 
-  logout(): void {
-    this.auth.logout();
+  async logout(): Promise<void> {
+    try {
+      await this.auth.logout();
+    } finally {
+      await this.router.navigate(['/login']);
+    }
   }
 
   async refreshStorageInfo() {

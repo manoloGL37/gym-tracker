@@ -1,56 +1,105 @@
-import { HttpClient, provideHttpClient, withInterceptors } from '@angular/common/http';
+import { HttpClient, HttpErrorResponse, provideHttpClient, withInterceptors } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
-import { TestBed } from '@angular/core/testing';
-import { AuthApiService } from './auth-api.service';
+import { signal } from '@angular/core';
+import { fakeAsync, flushMicrotasks, TestBed } from '@angular/core/testing';
+import { Router } from '@angular/router';
 import { authInterceptor } from './auth.interceptor';
 import { AuthSessionService } from './auth-session.service';
-import { AuthTokenStorage } from './auth-token.storage';
+
+const apiUrl = 'https://gym-tracker-api-s70k.onrender.com/api/routines';
 
 describe('authInterceptor', () => {
   let http: HttpClient;
   let requests: HttpTestingController;
-  let tokenStorage: AuthTokenStorage;
+  let session: {
+    accessToken: ReturnType<typeof signal<string | null>>;
+    refreshAccessToken: jasmine.Spy<() => Promise<string>>;
+    invalidateSession: jasmine.Spy<() => void>;
+  };
+  let router: jasmine.SpyObj<Router>;
 
   beforeEach(() => {
+    session = {
+      accessToken: signal<string | null>('access-token'),
+      refreshAccessToken: jasmine.createSpy('refreshAccessToken'),
+      invalidateSession: jasmine.createSpy('invalidateSession'),
+    };
+    router = jasmine.createSpyObj<Router>('Router', ['navigate']);
+    router.navigate.and.resolveTo(true);
     TestBed.configureTestingModule({
       providers: [
         provideHttpClient(withInterceptors([authInterceptor])),
         provideHttpClientTesting(),
-        AuthTokenStorage,
-        AuthSessionService,
-        { provide: AuthApiService, useValue: {} },
+        { provide: AuthSessionService, useValue: session },
+        { provide: Router, useValue: router },
       ],
     });
     http = TestBed.inject(HttpClient);
     requests = TestBed.inject(HttpTestingController);
-    tokenStorage = TestBed.inject(AuthTokenStorage);
-    localStorage.clear();
   });
 
   afterEach(() => requests.verify());
 
-  it('adds a bearer token only to the configured API', () => {
-    tokenStorage.set('jwt-token');
-
-    http.get('https://gym-tracker-api-s70k.onrender.com/api/users/me').subscribe();
+  it('adds bearer only to the configured API and never credentials globally', () => {
+    http.get(apiUrl).subscribe();
     http.get('https://example.test/telemetry').subscribe();
 
-    expect(requests.expectOne('https://gym-tracker-api-s70k.onrender.com/api/users/me').request.headers.get('Authorization'))
-      .toBe('Bearer jwt-token');
+    const apiRequest = requests.expectOne(apiUrl).request;
+    expect(apiRequest.headers.get('Authorization')).toBe('Bearer access-token');
+    expect(apiRequest.withCredentials).toBeFalse();
     expect(requests.expectOne('https://example.test/telemetry').request.headers.has('Authorization')).toBeFalse();
   });
 
-  it('clears only the auth token after a protected API returns 401', () => {
-    tokenStorage.set('expired-token');
-    localStorage.setItem('guest-data-check', 'keep');
+  it('refreshes an expired token and retries the original request once', fakeAsync(() => {
+    session.refreshAccessToken.and.resolveTo('fresh-token');
+    let result: { ok: boolean } | undefined;
+    http.get<{ ok: boolean }>(apiUrl).subscribe((value) => result = value);
 
-    http.get('https://gym-tracker-api-s70k.onrender.com/api/users/me').subscribe({ error: () => undefined });
-    requests.expectOne('https://gym-tracker-api-s70k.onrender.com/api/users/me').flush(null, {
-      status: 401,
-      statusText: 'Unauthorized',
-    });
+    requests.expectOne(apiUrl).flush(null, { status: 401, statusText: 'Unauthorized' });
+    flushMicrotasks();
+    const retry = requests.expectOne(apiUrl);
+    expect(retry.request.headers.get('Authorization')).toBe('Bearer fresh-token');
+    retry.flush({ ok: true });
 
-    expect(tokenStorage.get()).toBeNull();
-    expect(localStorage.getItem('guest-data-check')).toBe('keep');
-  });
+    expect(result).toEqual({ ok: true });
+    expect(session.refreshAccessToken).toHaveBeenCalledTimes(1);
+  }));
+
+  it('waits for a shared in-flight refresh before retrying concurrent 401 requests', fakeAsync(() => {
+    let resolveRefresh!: (token: string) => void;
+    const pendingRefresh = new Promise<string>((resolve) => resolveRefresh = resolve);
+    session.refreshAccessToken.and.returnValue(pendingRefresh);
+    http.get(`${apiUrl}/one`).subscribe();
+    http.get(`${apiUrl}/two`).subscribe();
+
+    requests.expectOne(`${apiUrl}/one`).flush(null, { status: 401, statusText: 'Unauthorized' });
+    requests.expectOne(`${apiUrl}/two`).flush(null, { status: 401, statusText: 'Unauthorized' });
+
+    resolveRefresh('fresh-token');
+    flushMicrotasks();
+    expect(requests.expectOne(`${apiUrl}/one`).request.headers.get('Authorization')).toBe('Bearer fresh-token');
+    expect(requests.expectOne(`${apiUrl}/two`).request.headers.get('Authorization')).toBe('Bearer fresh-token');
+  }));
+
+  it('logs out and navigates after an invalid refresh', fakeAsync(() => {
+    session.refreshAccessToken.and.rejectWith(new HttpErrorResponse({ status: 401 }));
+    http.get(apiUrl).subscribe({ error: () => undefined });
+
+    requests.expectOne(apiUrl).flush(null, { status: 401, statusText: 'Unauthorized' });
+    flushMicrotasks();
+
+    expect(session.invalidateSession).toHaveBeenCalledOnceWith();
+    expect(router.navigate).toHaveBeenCalledOnceWith(['/login']);
+  }));
+
+  it('does not log out on network or server failure during refresh', fakeAsync(() => {
+    session.refreshAccessToken.and.rejectWith(new HttpErrorResponse({ status: 503 }));
+    http.get(apiUrl).subscribe({ error: () => undefined });
+
+    requests.expectOne(apiUrl).flush(null, { status: 401, statusText: 'Unauthorized' });
+    flushMicrotasks();
+
+    expect(session.invalidateSession).not.toHaveBeenCalled();
+    expect(router.navigate).not.toHaveBeenCalled();
+  }));
 });

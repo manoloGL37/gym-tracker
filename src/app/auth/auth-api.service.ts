@@ -20,6 +20,21 @@ export class AuthApiService {
   login(request: LoginRequest): Observable<AuthResponse> {
     return this.http.post<AuthResponse>(`${this.apiBaseUrl}/api/auth/login`, request, {
       context: this.publicAuthContext,
+      withCredentials: true,
+    });
+  }
+
+  refresh(): Observable<AuthResponse> {
+    return this.http.post<AuthResponse>(`${this.apiBaseUrl}/api/auth/refresh`, null, {
+      context: this.publicAuthContext,
+      withCredentials: true,
+    });
+  }
+
+  logout(): Observable<void> {
+    return this.http.post<void>(`${this.apiBaseUrl}/api/auth/logout`, null, {
+      context: this.publicAuthContext,
+      withCredentials: true,
     });
   }
 

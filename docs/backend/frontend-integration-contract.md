@@ -11,7 +11,7 @@ This document is derived from the current Spring MVC controllers, DTO records, B
 
 Application endpoints use `/api`. Swagger UI is `/swagger-ui/index.html`; OpenAPI JSON is `/v3/api-docs`.
 
-`APP_CORS_ALLOWED_ORIGINS` is a comma-separated list of exact origins (no path or trailing slash). Its default is `http://localhost:4200,https://gym-tracker-eight-dun.vercel.app`. CORS permits `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, and `OPTIONS`, with `Authorization`, `Content-Type`, `Accept`, and `Origin` headers. It has no wildcard origin and does not enable cookie credentials.
+`APP_CORS_ALLOWED_ORIGINS` is a comma-separated list of exact origins (no path or trailing slash). Its default is `http://localhost:4200,https://gym-tracker-eight-dun.vercel.app`. CORS permits `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, and `OPTIONS`, with `Authorization`, `Content-Type`, `Accept`, and `Origin` headers. It enables credentials and never uses a wildcard origin.
 
 UUIDs are JSON strings. Java `BigDecimal` values are JSON numbers. Java `LocalDate` is JSON `YYYY-MM-DD`; Java `LocalDateTime` is an ISO-8601 local date-time such as `2026-09-10T14:30:00`, with no offset or timezone suffix.
 
@@ -49,15 +49,40 @@ Request body (`LoginRequest`):
 | `email` | string | Required; not null/blank | `@Email` |
 | `password` | string | Required; not null/blank | No size constraint in this DTO |
 
-Success response (`AuthResponse`) is exactly:
+Success response (`AuthResponse`) remains exactly:
 
 ```json
 { "accessToken": "<signed JWT>" }
 ```
 
-There is no `tokenType`, expiry field, refresh token, or user object in this response. The JWT contains subject=user UUID, issued-at, and expiration claims; configured expiration is 3,600,000 ms, but the expiry instant is not returned as a response field.
+There is no `tokenType`, expiry field, refresh token, or user object in the JSON response. The JWT contains subject=user UUID, issued-at, and expiration claims; its default lifetime is 3,600,000 ms (1 hour). Login also creates a server-side refresh session and sends `Set-Cookie` for `refreshToken`. The raw refresh token is never returned in JSON and PostgreSQL stores only its SHA-256 hash.
+
+The refresh cookie is host-only (no `Domain`), `HttpOnly`, has `Path=/api/auth`, and has a maximum lifetime matching the refresh session (default 2,592,000,000 ms / 30 days from login). Production must configure `Secure=true` and `SameSite=None` because the Angular and API deployments are cross-site. Local HTTP development defaults to `Secure=false` and `SameSite=Lax`. Browsers or privacy modes that block third-party cookies can still block the current Vercel-to-Render cookie; for maximum compatibility, deploy frontend and API on same-site custom domains or proxy `/api` through the frontend origin.
 
 Invalid payload is `400 VALIDATION_ERROR`. Unknown email or wrong password is `401` with `{ status: 401, code: "INVALID_CREDENTIALS", message, timestamp }`.
+
+### Refresh
+
+`POST /api/auth/refresh` is public in Spring Security because authentication is the refresh cookie, not the bearer token. It accepts no body. Angular must call it with credentials (`withCredentials: true`). A valid cookie returns the same exact JSON shape as login:
+
+```json
+{ "accessToken": "<new signed JWT>" }
+```
+
+Every successful refresh rotates the cookie. The 30-day expiry is absolute from login and does not slide on each refresh. The old token is immediately revoked. Missing, unknown, expired, revoked, or reused tokens return `401` with code `INVALID_REFRESH_TOKEN` and clear the cookie. Reuse of a rotated token revokes every still-active token in that refresh family, including the newer token, so Angular must discard local authentication and require login. Concurrent refresh requests must be coalesced client-side: only one refresh request should be in flight.
+
+### Logout
+
+`POST /api/auth/logout` accepts no body and should be called with `withCredentials: true`. It is idempotent, returns `204 No Content`, revokes the refresh family when the cookie is known, and always expires the refresh cookie. The access JWT is not persisted and therefore remains cryptographically valid until its short expiry; Angular must delete its in-memory/local copy immediately and must not send it again.
+
+### Angular authentication flow
+
+1. Send login with `withCredentials: true`, retain `accessToken`, and let the browser manage the refresh cookie.
+2. Send protected API calls with `Authorization: Bearer <accessToken>`.
+3. On application startup (when no usable access token exists) or after an access-token `401`, make one `POST /api/auth/refresh` with `withCredentials: true`, save the returned `accessToken`, then retry the original request once.
+4. Do not read, copy, persist, or include a refresh token in JavaScript or a request body; it is HttpOnly and browser-managed.
+5. If refresh returns `401`, clear client auth state and navigate to login. Do not retry refresh recursively.
+6. On logout, call `POST /api/auth/logout` with credentials, clear the access token regardless of the response, and navigate to login.
 
 ### Protected requests
 
@@ -82,6 +107,21 @@ interface ExercisePageResponse {
 ```
 
 `page` defaults to 0 and must be >= 0; `size` defaults to 20 and must be 1–100. Optional filters are `search`, `category`, `equipment`, `muscleGroup`, and `targetMuscle`.
+
+### Filter metadata
+
+`GET /api/exercises/filter-options` requires the same bearer JWT as every exercise route and returns `200 ExerciseFilterOptionsResponse`:
+
+```ts
+interface ExerciseFilterOptionsResponse {
+  categories: string[];
+  equipment: string[];
+  muscleGroups: string[];
+  targetMuscles: string[];
+}
+```
+
+The endpoint does not accept query parameters and does not modify `GET /api/exercises` filtering or pagination. Each array is non-null and contains only non-null, non-blank, distinct values from visible, non-deleted exercises: global dataset exercises plus exercises owned by the authenticated JWT user. Another user's custom exercise values are excluded. Values are returned alphabetically in the server's natural string order. `secondaryMuscles` is deliberately not included. Missing/invalid JWT returns the normal security `401` response.
 
 `ExerciseResponse` is:
 
@@ -364,7 +404,7 @@ The backend declares no timezone, offset, UTC normalization, or user-zone conven
 ## 10. Unsupported Operations Relevant to Angular
 
 - Register-and-login in one request: **Not supported by the current API.**
-- Refresh token, logout/revocation, or token-expiry response field: **Not supported by the current API.**
+- Access-token expiry is represented only by the JWT `exp` claim; it is not a separate response field.
 - Add a workout exercise independently: **Not supported by the current API.**
 - Edit/delete a workout exercise: **Not supported by the current API.**
 - Edit/delete a workout set: **Not supported by the current API.**

@@ -71,13 +71,18 @@ export class TrainingComponent implements OnInit, OnDestroy {
     this.cdr.markForCheck();
   }
 
-  ngOnDestroy(): void { if (this.clock) clearInterval(this.clock); }
+  ngOnDestroy(): void {
+    if (this.clock) clearInterval(this.clock);
+    this.clock = null;
+  }
 
   private startClock(): void {
     this.zone.runOutsideAngular(() => {
       this.clock = setInterval(() => {
         this.now = Date.now();
-        this.cdr.markForCheck();
+        // This renders only this OnPush view; entering Angular here would schedule
+        // application-wide change detection for a clock tick.
+        this.cdr.detectChanges();
       }, 1_000);
     });
   }

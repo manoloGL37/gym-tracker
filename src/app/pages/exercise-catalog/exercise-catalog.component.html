@@ -3,7 +3,7 @@
     <div class="flex items-center justify-between gap-3">
       <div>
         <div class="app-kicker">Biblioteca</div><h1>Catálogo de ejercicios</h1>
-        <p>Guardado en tu cuenta; tus rutinas de este dispositivo no cambian.</p>
+        <p>Gestiona los ejercicios disponibles para tus rutinas.</p>
       </div>
       <a routerLink="/settings" class="p-2 rounded-lg bg-white/15 text-white text-sm font-bold">Ajustes</a>
     </div>
@@ -13,7 +13,7 @@
     @if (view() === 'guest') {
       <div class="bg-white rounded-2xl border border-gray-100 shadow-sm text-center py-12 px-6">
         <h2 class="font-black text-gray-900 text-lg">El catálogo requiere una cuenta</h2>
-        <p class="text-sm text-gray-500 mt-2">Puedes seguir creando y usando rutinas locales sin conectarte.</p>
+        <p class="text-sm text-gray-500 mt-2">Puedes seguir creando y usando rutinas sin iniciar sesión.</p>
         <a routerLink="/login" class="inline-block mt-4 rounded-lg bg-orange-600 px-4 py-3 font-bold text-white">Iniciar sesión</a>
       </div>
     } @else if (view() === 'catalog') {

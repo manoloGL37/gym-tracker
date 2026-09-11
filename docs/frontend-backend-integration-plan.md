@@ -4,12 +4,14 @@
 
 - Angular standalone HTTP uses `provideHttpClient` and a functional JWT interceptor.
 - Development calls `http://localhost:8080`; production calls `https://gym-tracker-api-s70k.onrender.com`. Authentication services obtain the URL from the Angular environment, never from duplicated literals.
-- `AuthApiService` implements only the documented endpoints: `POST /api/users`, `POST /api/auth/login` and `GET /api/users/me`.
-- The browser stores the access token in `localStorage` under `gym-tracker:auth:access-token`. This is practical for the current API (there is no refresh-token/cookie option), but makes XSS prevention important because same-origin JavaScript can read it.
-- Startup is non-blocking. With no token, the app immediately enters guest/local mode. With a stored token, it checks `/api/users/me` in the background. A 401 clears only the auth key and returns to guest/local mode. A network or 5xx error preserves the token and local data and exposes a manual retry in Settings; this covers Render cold starts.
+- `AuthApiService` implements the documented authentication endpoints: registration, login, refresh, logout and `/api/users/me`. Login, refresh and logout opt into `withCredentials`; ordinary API and third-party requests do not.
+- The access JWT lives only in the `AuthSessionService` in-memory signal and is attached as `Authorization: Bearer` to this backend's protected requests. It is no longer written to `localStorage`; startup removes the legacy auth key. The refresh token remains exclusively in the backend-issued, browser-managed `HttpOnly` cookie and is never read or copied by Angular.
+- Startup remains non-blocking: the initializer starts refresh without awaiting it, so guest/Dexie functionality renders immediately. A successful refresh rotates the cookie, stores the new access JWT in memory and loads `/api/users/me`. Refresh `401` means an invalid session and returns to guest mode. Network/5xx errors set the session check to `unavailable`, retain any existing in-memory assumption, preserve all local data and expose Settings retry; this covers Render cold starts.
+- A protected-request `401` performs one coalesced refresh. All concurrent failures wait on the same in-flight promise, then retry their original request once with the rotated access JWT. A request that failed with a stale token after another refresh reuses the already-current token instead of rotating again. Login, refresh, logout and public calls bypass this behavior, and a retry marker prevents loops.
+- Refresh `401` clears only the frontend authentication state and sends the user to login. Refresh network/5xx failures propagate as temporary errors without logging out. Logout calls the backend with credentials, then clears frontend auth in `finally`, navigates to login and never touches Dexie, migration ledgers, backups or local settings.
 - Guest mode remains the default and all current Dexie/IndexedDB repositories, settings and backup flows remain unchanged.
-- A logged-in account has `persistenceMode = cloud` to signal that it is cloud-capable. `resourcePersistenceMode` remains `local`: no existing routines, workouts, exercises, statistics or body-weight data are server-backed or synchronized in this phase.
-- Registration creates the account only, then sends the user to login as required by the API contract. Login stores the token and loads `/me`. Logout is frontend-only and clears only authentication state.
+- A logged-in account has `persistenceMode = cloud` to signal that it is cloud-capable. Authentication transitions do not clear or rewrite any local resource; the later phase-specific cloud integrations remain unchanged.
+- Registration creates the account only, then sends the user to login as required by the API contract. Login allows the refresh cookie to be established, retains the returned access token in memory and loads `/me`.
 
 ## Phase 2 — cloud exercise catalog (implemented)
 

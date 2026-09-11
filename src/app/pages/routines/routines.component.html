@@ -3,12 +3,12 @@
   <div class="app-content flex-1">
     <div class="routine-toolbar"><span>{{ routines.length }} rutinas disponibles</span><button type="button" (click)="startCreate()">+ Crear rutina</button></div>
     @if (error(); as message) { <p class="mb-3 rounded-xl bg-red-50 p-3 text-sm font-medium text-red-700">{{ message }}</p> }
-    @if (cloudLoading) { <p class="mb-3 text-sm text-gray-500">Cargando rutinas cloud…</p> }
+    @if (cloudLoading) { <p class="mb-3 text-sm text-gray-500">Cargando rutinas…</p> }
     @if (!loading && routines.length) {
       @for (item of routines; track routineKey(item)) {
         <div class="routine-card bg-white rounded-2xl shadow-md border border-gray-100 mb-3 px-4 py-4 flex items-center justify-between">
-          <div><div class="flex items-center gap-2"><div class="text-lg font-bold text-gray-900 mb-1">{{ item.routine.name }}</div><span class="source-badge" [class.source-badge--cloud]="item.source === 'cloud'">{{ item.source === 'local' ? 'En este dispositivo' : 'En tu cuenta' }}</span></div>
-            @if (item.source === 'local') { <div class="text-gray-500 text-sm font-medium">{{ item.routine.exercises.length }} {{ t.t('routines.exercises') }}</div> } @else { <div class="text-gray-500 text-sm font-medium">{{ item.routine.description || 'Rutina respaldada en tu cuenta' }}</div> }
+          <div><div class="flex items-center gap-2"><div class="text-lg font-bold text-gray-900 mb-1">{{ item.routine.name }}</div></div>
+            @if (item.source === 'local') { <div class="text-gray-500 text-sm font-medium">{{ item.routine.exercises.length }} {{ t.t('routines.exercises') }}</div> } @else { <div class="text-gray-500 text-sm font-medium">{{ item.routine.description || 'Sin descripción' }}</div> }
           </div>
           <div class="flex gap-2"><button (click)="startEdit(item)" [disabled]="saving()" class="text-orange-600 text-sm font-bold px-3 py-1.5 rounded-lg bg-orange-50 disabled:opacity-50">{{ t.t('routines.edit') }}</button><button (click)="deleteRoutine(item)" [disabled]="saving()" class="text-red-600 text-sm font-bold px-3 py-1.5 rounded-lg bg-red-50 disabled:opacity-50">{{ t.t('routines.delete') }}</button></div>
         </div>
@@ -17,7 +17,7 @@
     } @else if (!loading) { <div class="text-center text-gray-400 mt-10 font-medium">{{ t.t('routines.noRoutines') }}</div> }
 
     <div class="bg-white rounded-2xl shadow-md border border-gray-100 mt-6 px-4 py-5">
-      <h2 class="text-lg font-bold mb-3 text-gray-900">{{ editingLocal || editingCloud ? t.t('routines.editRoutine') : t.t('routines.createRoutine') }} <span class="text-sm font-medium text-gray-500">· {{ isCloudEditor ? 'Cloud' : 'Local' }}</span></h2>
+      <h2 class="text-lg font-bold mb-3 text-gray-900">{{ editingLocal || editingCloud ? t.t('routines.editRoutine') : t.t('routines.createRoutine') }}</h2>
       @if (isCloudEditor) {
         <form (ngSubmit)="saveRoutine()" autocomplete="off">
           <input [(ngModel)]="cloudDraft.name" name="cloudName" maxlength="150" required placeholder="{{ t.t('routines.routineName') }}" class="w-full mb-3 px-4 py-3 border-2 border-gray-300 rounded-xl" />
