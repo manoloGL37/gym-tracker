@@ -1,4 +1,5 @@
 import { WorkoutHistory } from '../data/workout-history.model';
+import type { RoutineResponse } from '../routines/routine-api.models';
 import { WorkoutExerciseResponse, WorkoutResponse, WorkoutSetResponse } from './workout-api.models';
 
 export type WorkoutSource = 'local' | 'cloud';
@@ -44,6 +45,16 @@ export function cloudActiveFromWorkout(workout: WorkoutResponse, routineName: st
     routineId: workout.routineId ?? '', routineName, startedAt: workout.startedAt, notes: workout.notes,
     exercises: workout.exercises.slice().sort((a, b) => a.position - b.position).map(exercise => cloudExerciseFromResponse(exercise, names)),
   };
+}
+
+/** Restores the plan omitted by the workout snapshot contract without replacing saved or retryable sets. */
+export function fillCloudPlannedSets(training: CloudActiveTraining, routine: RoutineResponse): CloudActiveTraining {
+  const plannedByExercise = new Map(routine.exercises.map(exercise => [exercise.exerciseId, exercise.sets]));
+  for (const exercise of training.exercises) {
+    const planned = plannedByExercise.get(exercise.exerciseId) ?? exercise.sets.length;
+    while (exercise.sets.length < planned) exercise.sets.push(newCloudSetDraft(exercise));
+  }
+  return training;
 }
 
 export function cloudExerciseFromResponse(exercise: WorkoutExerciseResponse, names: Map<string, string>): CloudActiveExercise {

@@ -1,27 +1,49 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
-import { of } from 'rxjs';
+import { HttpErrorResponse } from '@angular/common/http';
+import { Router } from '@angular/router';
+import { throwError } from 'rxjs';
 import { AuthSessionService } from '../../auth/auth-session.service';
 import { ActiveTrainingRepository, CloudActiveTrainingRepository, SelectedRoutineRepository, WorkoutHistoryRepository } from '../../data/active-training.repository';
 import { ExerciseApiService } from '../../exercises/exercise-api.service';
+import { RoutineApiService } from '../../routines/routine-api.service';
 import { TranslationService } from '../../services/translation.service';
 import { WorkoutApiService } from '../../workouts/workout-api.service';
+import { CloudActiveTraining } from '../../workouts/workout-domain';
+import { WorkoutResponse } from '../../workouts/workout-api.models';
 import { TrainingComponent } from './training.component';
 
 describe('TrainingComponent', () => {
   let fixture: ComponentFixture<TrainingComponent>;
   let component: TrainingComponent;
+  let workoutApi: jasmine.SpyObj<WorkoutApiService>;
+  let router: jasmine.SpyObj<Router>;
+  let selectedGet: jasmine.Spy;
+  let selectedClear: jasmine.Spy;
+  let activeClear: jasmine.Spy;
+  let cloudClear: jasmine.Spy;
 
   beforeEach(async () => {
+    workoutApi = jasmine.createSpyObj<WorkoutApiService>('WorkoutApiService', ['list', 'get', 'create', 'update', 'createSet']);
+    router = jasmine.createSpyObj<Router>('Router', ['navigate']);
     spyOn(WorkoutHistoryRepository, 'getAll').and.resolveTo([]);
+    spyOn(WorkoutHistoryRepository, 'add').and.resolveTo();
     spyOn(ActiveTrainingRepository, 'get').and.resolveTo(undefined);
+    activeClear = spyOn(ActiveTrainingRepository, 'clear').and.resolveTo();
+    spyOn(ActiveTrainingRepository, 'save').and.resolveTo();
     spyOn(CloudActiveTrainingRepository, 'get').and.resolveTo(undefined);
-    spyOn(SelectedRoutineRepository, 'get').and.resolveTo(undefined);
+    cloudClear = spyOn(CloudActiveTrainingRepository, 'clear').and.resolveTo();
+    spyOn(CloudActiveTrainingRepository, 'save').and.resolveTo();
+    selectedGet = spyOn(SelectedRoutineRepository, 'get').and.resolveTo(undefined);
+    selectedClear = spyOn(SelectedRoutineRepository, 'clear').and.resolveTo();
+    spyOn(SelectedRoutineRepository, 'setCloud').and.resolveTo();
     await TestBed.configureTestingModule({
       imports: [TrainingComponent],
       providers: [
+        { provide: Router, useValue: router },
         { provide: AuthSessionService, useValue: { isAuthenticated: () => false } },
-        { provide: WorkoutApiService, useValue: jasmine.createSpyObj<WorkoutApiService>('WorkoutApiService', ['list', 'get', 'create', 'update', 'createSet']) },
+        { provide: WorkoutApiService, useValue: workoutApi },
+        { provide: RoutineApiService, useValue: jasmine.createSpyObj<RoutineApiService>('RoutineApiService', ['get']) },
         { provide: ExerciseApiService, useValue: jasmine.createSpyObj<ExerciseApiService>('ExerciseApiService', ['get']) },
         { provide: TranslationService, useValue: { lang: signal<'es' | 'en'>('es'), t: (key: string) => key } },
       ],
@@ -32,22 +54,67 @@ describe('TrainingComponent', () => {
 
   afterEach(() => TestBed.resetTestingModule());
 
-  it('renders the actual previous local set even when it also has a suggested target', () => {
-    component.previousWorkouts = [{ id: 'history', routineId: 'r', routineName: 'Anterior', startedAt: '2026-01-01T10:00:00Z', finishedAt: '2026-01-01T11:00:00Z', exercises: [{ exerciseId: 'legacy-id', name: 'Press', sets: [{ setIndex: 0, reps: 10, weight: 50 }] }] }];
-    component.training = { id: 'active', routineId: 'r', routineName: 'Hoy', startedAt: '2026-01-02T10:00:00Z', exercises: [{ exerciseId: 'legacy-id', name: 'Press', sets: [{ setIndex: 0, reps: null, weight: null }] }] };
+  it('shows real previous values and no generated objective', () => {
+    component.setLocalBenchmarkHistory([localHistory('latest', '2026-01-01T11:00:00Z', 'exercise-id', 'Press', [
+      { setIndex: 0, reps: 10, weight: 50 },
+    ])]);
+    component.training = localTraining('exercise-id', 'Press', [{ setIndex: 0, reps: null, weight: null }]);
     fixture.detectChanges();
-    expect(fixture.nativeElement.textContent).toContain('Última: 10 × 50 kg');
-    expect(fixture.nativeElement.textContent).toContain('Objetivo: 11 × 50 kg');
+
+    expect(fixture.nativeElement.textContent).toContain('Anterior: 10 reps · 50 kg');
+    expect(fixture.nativeElement.textContent).not.toContain('Objetivo');
   });
 
-  it('maps cloud history by stable exercise UUID, not by the display name', () => {
-    component.previousCloudWorkouts = [{ id: 'history', clientId: null, routineId: 'r', startedAt: '2026-01-01T10:00:00', completedAt: '2026-01-01T11:00:00', notes: null, createdAt: '2026-01-01T10:00:00', exercises: [{ id: 'workout-exercise', exerciseId: 'exercise-uuid', position: 0, notes: null, sets: [{ id: 'set', clientId: null, setNumber: 1, reps: 8, weight: 72.5, rpe: null }] }] }];
-    expect(component.getCloudLastSetReference('exercise-uuid', 1)).toEqual({ reps: 8, weight: 72.5 });
-    expect(component.getCloudLastSetReference('same-name-but-other-uuid', 1)).toBeNull();
+  it('uses the local exercise id and only the most recent session containing it', () => {
+    component.setLocalBenchmarkHistory([
+      localHistory('old', '2026-01-01T11:00:00Z', 'exercise-id', 'Press antiguo', [
+        { setIndex: 0, reps: 8, weight: 45 }, { setIndex: 1, reps: 8, weight: 45 },
+      ]),
+      localHistory('latest', '2026-01-03T11:00:00Z', 'exercise-id', 'Press renombrado', [
+        { setIndex: 0, reps: 10, weight: 50 },
+      ]),
+      localHistory('same-name', '2026-01-04T11:00:00Z', 'other-id', 'Press renombrado', [
+        { setIndex: 0, reps: 20, weight: 100 },
+      ]),
+    ]);
+
+    expect(component.getLastSetReference('exercise-id', 0)).toEqual({ reps: 10, weight: 50 });
+    expect(component.getLastSetReference('exercise-id', 1)).toBeNull();
+  });
+
+  it('maps account history by UUID and set number within the latest matching session', () => {
+    component.setCloudBenchmarkHistory([
+      cloudWorkout('old', '2026-01-01T11:00:00', 'exercise-uuid', [cloudSet(1, 8, 70), cloudSet(2, 8, 70)]),
+      cloudWorkout('latest', '2026-01-03T11:00:00', 'exercise-uuid', [cloudSet(1, 9, 72.5)]),
+      cloudWorkout('same-name-is-irrelevant', '2026-01-04T11:00:00', 'other-uuid', [cloudSet(1, 20, 100)]),
+    ]);
+
+    expect(component.getCloudLastSetReference('exercise-uuid', 1)).toEqual({ reps: 9, weight: 72.5 });
+    expect(component.getCloudLastSetReference('exercise-uuid', 2)).toBeNull();
+    expect(component.getCloudLastSetReference('missing-uuid', 1)).toBeNull();
+  });
+
+  it('shows a subtle empty benchmark when the corresponding set has no history', () => {
+    component.setLocalBenchmarkHistory([]);
+    component.training = localTraining('exercise-id', 'Press', [{ setIndex: 0, reps: null, weight: null }]);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('Sin registro anterior');
+  });
+
+  it('keeps the compact session status in a sticky header', () => {
+    component.training = localTraining('exercise-id', 'Press', []);
+    component.now = new Date(component.training.startedAt).getTime();
+    fixture.detectChanges();
+    const header = fixture.nativeElement.querySelector('.session-commandbar') as HTMLElement;
+    expect(header).not.toBeNull();
+    expect(getComputedStyle(header).position).toBe('sticky');
+    expect(header.textContent).toContain('Sesión en curso');
+    expect(header.textContent).toContain('00:00');
   });
 
   it('derives elapsed time from startedAt and clears its one-second clock on destroy', () => {
-    component.training = { id: 'active', routineId: 'r', routineName: 'Hoy', startedAt: '2026-01-01T10:00:00Z', exercises: [] };
+    component.training = localTraining('exercise-id', 'Press', []);
+    component.training.startedAt = '2026-01-01T10:00:00Z';
     component.now = new Date('2026-01-01T10:01:05Z').getTime();
     expect(component.elapsed()).toBe('01:05');
     const set = spyOn(window, 'setInterval').and.callThrough();
@@ -58,13 +125,90 @@ describe('TrainingComponent', () => {
     expect(clear).toHaveBeenCalled();
   });
 
-  it('counts only complete local sets and persisted cloud sets as workout progress', () => {
-    component.training = { id: 'active', routineId: 'r', routineName: 'Hoy', startedAt: '2026-01-01T10:00:00Z', exercises: [{ exerciseId: 'e', name: 'Press', sets: [{ setIndex: 0, reps: 8, weight: 50 }, { setIndex: 1, reps: 8, weight: null }] }] };
+  it('counts valid local sets and only server-confirmed account sets', () => {
+    component.training = localTraining('e', 'Press', [
+      { setIndex: 0, reps: 8, weight: 50 },
+      { setIndex: 1, reps: 8, weight: null },
+      { setIndex: 2, reps: 0, weight: 50 },
+    ]);
     expect(component.completedSetCount()).toBe(1);
-    expect(component.totalSetCount()).toBe(2);
+    expect(component.totalSetCount()).toBe(3);
+    expect(component.progressPercentage()).toBe(33);
+
     component.training = null;
-    component.cloudTraining = { id: 'active', source: 'cloud', workoutId: 'w', workoutClientId: 'c', routineId: 'r', routineName: 'Hoy', startedAt: '2026-01-01T10:00:00', notes: null, exercises: [{ id: 'we', exerciseId: 'e', position: 0, name: 'Press', notes: null, sets: [{ clientId: 'saved', setNumber: 1, reps: 8, weight: 50, rpe: null, persisted: { id: 'set', clientId: 'saved', setNumber: 1, reps: 8, weight: 50, rpe: null } }, { clientId: 'draft', setNumber: 2, reps: 8, weight: 50, rpe: null, persisted: null }] }] };
+    component.cloudTraining = cloudTraining([
+      { clientId: 'saved', setNumber: 1, reps: 8, weight: 50, rpe: null, persisted: cloudSet(1, 8, 50) },
+      { clientId: 'draft', setNumber: 2, reps: 8, weight: 50, rpe: null, persisted: null },
+    ]);
     expect(component.completedSetCount()).toBe(1);
     expect(component.totalSetCount()).toBe(2);
+    expect(component.progressPercentage()).toBe(50);
+  });
+
+  it('does not count a set when the server save fails', async () => {
+    component.cloudTraining = cloudTraining([
+      { clientId: 'retryable', setNumber: 1, reps: 8, weight: 50, rpe: null, persisted: null },
+    ]);
+    workoutApi.createSet.and.returnValue(throwError(() => new HttpErrorResponse({ status: 0 })));
+
+    await component.saveCloudSet(component.cloudTraining.exercises[0], 0);
+
+    expect(component.completedSetCount()).toBe(0);
+    expect(component.cloudTraining.exercises[0].sets[0].clientId).toBe('retryable');
+  });
+
+  it('cancels a local workout without creating history or touching unrelated data', async () => {
+    component.training = localTraining('exercise-id', 'Press', [{ setIndex: 0, reps: 8, weight: 50 }]);
+
+    await component.confirmCancellation();
+
+    expect(activeClear).toHaveBeenCalled();
+    expect(selectedClear).toHaveBeenCalled();
+    expect(WorkoutHistoryRepository.add).not.toHaveBeenCalled();
+    expect(router.navigate).toHaveBeenCalledWith(['/home']);
+  });
+
+  it('preserves an account workout because the backend has no cancellation endpoint', async () => {
+    component.cloudTraining = cloudTraining([]);
+
+    await component.confirmCancellation();
+
+    expect(cloudClear).not.toHaveBeenCalled();
+    expect(workoutApi.update).not.toHaveBeenCalled();
+    expect(component.cloudTraining).not.toBeNull();
+    expect(component.cloudError).toContain('no permite cancelar');
+  });
+
+  it('preserves the original clientId and startedAt after a failed account-workout start', async () => {
+    selectedGet.and.resolveTo({ id: 'selected', source: 'cloud', routineId: 'routine', routineName: 'Día A', workoutClientId: 'stable-client-id', startedAt: '2026-09-11T08:15:00' });
+    workoutApi.create.and.returnValue(throwError(() => new HttpErrorResponse({ status: 0 })));
+
+    await component.ngOnInit();
+    await component.retryCloudStart();
+
+    expect(workoutApi.create).toHaveBeenCalledTimes(2);
+    expect(workoutApi.create.calls.allArgs().map(args => args[0].clientId)).toEqual(['stable-client-id', 'stable-client-id']);
+    expect(workoutApi.create.calls.allArgs().map(args => args[0].startedAt)).toEqual(['2026-09-11T08:15:00', '2026-09-11T08:15:00']);
+    expect(selectedClear).not.toHaveBeenCalled();
   });
 });
+
+function localTraining(exerciseId: string, name: string, sets: Array<{ setIndex: number; reps: number | null; weight: number | null }>) {
+  return { id: 'active', routineId: 'r', routineName: 'Hoy', startedAt: '2026-01-02T10:00:00Z', exercises: [{ exerciseId, name, sets }] };
+}
+
+function localHistory(id: string, finishedAt: string, exerciseId: string, name: string, sets: Array<{ setIndex: number; reps: number | null; weight: number | null }>) {
+  return { id, routineId: 'r', routineName: 'Anterior', startedAt: '2026-01-01T10:00:00Z', finishedAt, exercises: [{ exerciseId, name, sets }] };
+}
+
+function cloudSet(setNumber: number, reps: number, weight: number) {
+  return { id: `set-${setNumber}`, clientId: `client-${setNumber}`, setNumber, reps, weight, rpe: null };
+}
+
+function cloudWorkout(id: string, completedAt: string, exerciseId: string, sets: ReturnType<typeof cloudSet>[]): WorkoutResponse {
+  return { id, clientId: null, routineId: 'r', startedAt: completedAt, completedAt, notes: null, createdAt: completedAt, exercises: [{ id: `workout-exercise-${id}`, exerciseId, position: 0, notes: null, sets }] };
+}
+
+function cloudTraining(sets: CloudActiveTraining['exercises'][number]['sets']): CloudActiveTraining {
+  return { id: 'active', source: 'cloud', workoutId: 'w', workoutClientId: 'c', routineId: 'r', routineName: 'Hoy', startedAt: '2026-01-01T10:00:00', notes: null, exercises: [{ id: 'we', exerciseId: 'e', position: 0, name: 'Press', notes: null, sets }] };
+}

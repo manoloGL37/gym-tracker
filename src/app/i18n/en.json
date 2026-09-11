@@ -64,7 +64,6 @@
   "training.reps": "Reps",
   "training.weight": "Weight (kg)",
   "training.lastSet": "Last: {{reps}} reps, {{weight}} kg",
-  "training.suggestedSet": "Suggested target: {{reps}} reps x {{weight}} kg",
   "training.estimatedRecord": "New estimated record",
   "training.lastObservation": "Previous observation",
   "training.set": "Set {{number}}",

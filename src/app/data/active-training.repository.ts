@@ -3,7 +3,7 @@ import Dexie, { Table } from 'dexie';
 import { ActiveTraining } from '../pages/training/training.model';
 import { WorkoutHistory } from './workout-history.model';
 import { BodyWeightEntry } from './body-weight.model';
-import { CloudActiveTraining } from '../workouts/workout-domain';
+import { CloudActiveTraining, toBackendLocalDateTime } from '../workouts/workout-domain';
 import { MigrationLedger } from '../migration/local-to-cloud-migration.models';
 
 export interface Routine {
@@ -33,6 +33,8 @@ export interface CloudSelectedRoutine {
   routineName: string;
   /** Generated once at selection time so an ambiguous POST retry stays idempotent. */
   workoutClientId: string;
+  /** Captured with the first attempt so retries keep the real session start time. */
+  startedAt?: string;
 }
 
 class GymTrackerDB extends Dexie {
@@ -104,8 +106,8 @@ export const SelectedRoutineRepository = {
   async get() {
     return db.selectedRoutine.get('selected');
   },
-  async setCloud(routineId: string, routineName: string, workoutClientId: string) {
-    await db.selectedRoutine.put({ id: 'selected', source: 'cloud', routineId, routineName, workoutClientId });
+  async setCloud(routineId: string, routineName: string, workoutClientId: string, startedAt = toBackendLocalDateTime(new Date())) {
+    await db.selectedRoutine.put({ id: 'selected', source: 'cloud', routineId, routineName, workoutClientId, startedAt });
   },
   async clear() {
     await db.selectedRoutine.delete('selected');
