@@ -4,7 +4,6 @@ import { MainLayoutComponent } from './layout/main-layout/main-layout.component'
 import { HomeComponent } from './pages/home/home.component';
 import { RoutinesComponent } from './pages/routines/routines.component';
 import { CalendarComponent } from './pages/calendar/calendar.component';
-// import { BodyWeightComponent } from './pages/body-weight/body-weight.component';
 import { WeightComponent } from './pages/weight/weight.component';
 import { TrainingComponent } from './pages/training/training.component';
 

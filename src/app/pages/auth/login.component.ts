@@ -10,6 +10,7 @@ import { BackendErrorResponse, ValidationErrorResponse } from '../../auth/auth.m
   standalone: true,
   imports: [FormsModule, RouterLink],
   templateUrl: './login.component.html',
+  styleUrls: ['./auth.component.css'],
 })
 export class LoginComponent {
   private readonly auth = inject(AuthSessionService);

@@ -1,26 +1,17 @@
-<main class="auth-page min-h-[100dvh] bg-gray-50 px-4 py-8 flex items-center">
-  <section class="w-full max-w-md mx-auto bg-white rounded-2xl shadow-md border border-gray-100 p-6">
-    <a routerLink="/home" class="text-sm font-semibold text-orange-700">← Volver a la aplicación</a>
-    <div class="app-kicker">Tu entrenamiento, donde lo necesites</div><h1 class="text-3xl font-black text-gray-900 mt-2">Iniciar sesión</h1>
-    <p class="text-sm text-gray-600 mt-2">Tus datos anteriores no se eliminarán ni moverán automáticamente.</p>
-
-    <form class="mt-6 space-y-4" (ngSubmit)="submit()">
-      <label class="block text-sm font-bold text-gray-700">
-        Correo electrónico
-        <input [(ngModel)]="email" name="email" type="email" autocomplete="email" required class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-3" />
-      </label>
-      <label class="block text-sm font-bold text-gray-700">
-        Contraseña
-        <input [(ngModel)]="password" name="password" type="password" autocomplete="current-password" required class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-3" />
-      </label>
-      @if (error()) {
-        <p class="rounded-lg bg-red-50 p-3 text-sm font-medium text-red-700" role="alert">{{ error() }}</p>
-      }
-      <button type="submit" [disabled]="submitting()" class="w-full rounded-lg bg-orange-600 px-4 py-3 font-bold text-white disabled:opacity-50">
-        {{ submitting() ? 'Iniciando sesión…' : 'Iniciar sesión' }}
-      </button>
+<main class="auth-shell">
+  <aside class="auth-story">
+    <a routerLink="/home">Volver a la aplicación</a>
+    <div><span>GYM / TRACKER</span><h1>Tu registro sigue contigo.</h1><p>Entrena como invitado o conecta una cuenta para mantener el historial sincronizado entre dispositivos.</p></div>
+    <small>La cuenta es opcional. Tus datos locales no se eliminan al entrar.</small>
+  </aside>
+  <section class="auth-form">
+    <header><h2>Iniciar sesión</h2><p>Continúa donde dejaste el entrenamiento.</p></header>
+    <form (ngSubmit)="submit()">
+      <label>Correo electrónico<input [(ngModel)]="email" name="email" type="email" inputmode="email" autocomplete="email" required></label>
+      <label>Contraseña<input [(ngModel)]="password" name="password" type="password" autocomplete="current-password" required></label>
+      @if (error()) { <p class="auth-error" role="alert">{{ error() }}</p> }
+      <button type="submit" [disabled]="submitting()">{{ submitting() ? 'Iniciando sesión…' : 'Iniciar sesión' }}</button>
     </form>
-
-    <p class="mt-5 text-sm text-gray-600">¿No tienes cuenta? <a routerLink="/register" class="font-bold text-orange-700">Crear cuenta</a></p>
+    <p class="auth-switch">¿No tienes cuenta? <a routerLink="/register">Crear cuenta</a></p>
   </section>
 </main>

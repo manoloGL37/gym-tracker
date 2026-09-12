@@ -44,6 +44,7 @@
   "weight.cancel": "Cancelar",
   "weight.edit": "Editar",
   "weight.delete": "Eliminar",
+  "weight.deleteConfirm": "¿Eliminar este registro de peso? Esta acción no se puede deshacer.",
   "weight.history": "Histórico",
   "weight.noData": "Aún no hay registros de peso.",
   "weight.loading": "Cargando...",

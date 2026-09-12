@@ -9,6 +9,7 @@ import { authErrorMessage } from './login.component';
   standalone: true,
   imports: [FormsModule, RouterLink],
   templateUrl: './register.component.html',
+  styleUrls: ['./auth.component.css'],
 })
 export class RegisterComponent {
   private readonly auth = inject(AuthSessionService);

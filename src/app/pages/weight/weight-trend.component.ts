@@ -7,11 +7,11 @@ import { BodyWeightEntry } from '../../data/body-weight.model';
   standalone: true,
   template: `
     @if (entries && entries.length > 1) {
-      <svg viewBox="0 0 320 60" class="w-full h-16">
+      <svg viewBox="0 0 320 60" role="img" aria-label="Evolución del peso" style="display:block;width:100%;height:4rem">
          <polyline
            [attr.points]="getPoints()"
            fill="none"
-          stroke="#f97316"
+          stroke="var(--signal)"
            stroke-width="3"
            stroke-linecap="round"
            stroke-linejoin="round"
@@ -19,7 +19,7 @@ import { BodyWeightEntry } from '../../data/body-weight.model';
       </svg>
     }
     @if (!entries || entries.length <= 1) {
-      <div class="text-xs text-gray-400 text-center py-4">
+      <div style="padding:1rem;text-align:center;color:var(--muted);font-size:.72rem">
         {{ t.t('weight.trendNotEnough') }}
       </div>
     }
