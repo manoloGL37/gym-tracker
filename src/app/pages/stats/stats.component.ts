@@ -23,6 +23,7 @@ import { ExerciseResponse } from '../../exercises/exercise-api.models';
 import { getExerciseName } from '../../exercises/exercise-domain';
 import { LocalToCloudMigrationService } from '../../migration/local-to-cloud-migration.service';
 import { TranslationService } from '../../services/translation.service';
+import { AsyncRequestState } from '../../services/async-request-state';
 import { StatisticsApiService } from '../../statistics/statistics-api.service';
 import {
   ExerciseStatisticsResponse,
@@ -110,6 +111,8 @@ export class StatsComponent implements OnInit {
   readonly previousStats = signal<PeriodStats>({ ...EMPTY_STATS });
   readonly comparisonChanges = signal<Record<ComparableMetric, number>>({ ...EMPTY_CHANGES });
   readonly loading = signal(true);
+  readonly statsRequest = new AsyncRequestState();
+  readonly hasConfirmedData = signal(false);
   readonly source = signal<StatisticsSource>('local');
   readonly error = signal<string | null>(null);
 
@@ -276,6 +279,7 @@ export class StatsComponent implements OnInit {
   async loadStats(): Promise<void> {
     const requestVersion = ++this.loadVersion;
     this.loading.set(true);
+    this.statsRequest.begin();
     this.error.set(null);
     if (this.source() === 'cloud' && this.auth.isAuthenticated()) {
       await this.loadCloudStats(requestVersion);
@@ -517,15 +521,13 @@ export class StatsComponent implements OnInit {
       this.currentStats.set(currentStats);
       this.previousStats.set(previousStats);
       this.comparisonChanges.set(calculateChanges(currentStats, previousStats));
+      this.hasConfirmedData.set(true);
       await this.loadWeeklyProgress();
     } catch {
       if (requestVersion !== this.loadVersion) return;
-      this.currentStats.set({ ...EMPTY_STATS });
-      this.previousStats.set({ ...EMPTY_STATS });
-      this.comparisonChanges.set({ ...EMPTY_CHANGES });
       this.error.set(this.t.t('stats.localError'));
     } finally {
-      if (requestVersion === this.loadVersion) this.loading.set(false);
+      if (requestVersion === this.loadVersion) { this.loading.set(false); this.statsRequest.end(); }
     }
   }
 
@@ -548,15 +550,13 @@ export class StatsComponent implements OnInit {
       this.currentStats.set(this.cloudPeriodStats(comparison.current, evolution.data));
       this.previousStats.set(this.cloudPeriodStats(comparison.previous, []));
       this.comparisonChanges.set(pickComparableChanges(comparison.changes));
+      this.hasConfirmedData.set(true);
       await this.loadWeeklyProgress();
     } catch {
       if (requestVersion !== this.loadVersion || this.source() !== 'cloud') return;
-      this.currentStats.set({ ...EMPTY_STATS });
-      this.previousStats.set({ ...EMPTY_STATS });
-      this.comparisonChanges.set({ ...EMPTY_CHANGES });
       this.error.set(this.t.t('stats.cloudError'));
     } finally {
-      if (requestVersion === this.loadVersion) this.loading.set(false);
+      if (requestVersion === this.loadVersion) { this.loading.set(false); this.statsRequest.end(); }
     }
   }
 

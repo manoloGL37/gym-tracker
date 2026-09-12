@@ -1,11 +1,11 @@
 <main class="stats-page">
-  <header class="stats-header"><div><span>RENDIMIENTO</span><h1>{{ t.t('stats.title') }}</h1><p>{{ getPeriodLabel() }}</p></div><div class="period-control" role="group" [attr.aria-label]="t.t('stats.periodLabel')"><button type="button" (click)="setPeriod('week')" [class.active]="selectedPeriod() === 'week'" [attr.aria-pressed]="selectedPeriod() === 'week'">{{ t.t('stats.weekly') }}</button><button type="button" (click)="setPeriod('month')" [class.active]="selectedPeriod() === 'month'" [attr.aria-pressed]="selectedPeriod() === 'month'">{{ t.t('stats.monthly') }}</button></div></header>
+  <header class="stats-header"><div><span>RENDIMIENTO</span><h1>{{ t.t('stats.title') }}</h1><p>{{ getPeriodLabel() }}</p></div><div class="period-control" role="group" [attr.aria-label]="t.t('stats.periodLabel')"><button type="button" (click)="setPeriod('week')" [disabled]="loading()" [class.active]="selectedPeriod() === 'week'" [attr.aria-pressed]="selectedPeriod() === 'week'">{{ t.t('stats.weekly') }}</button><button type="button" (click)="setPeriod('month')" [disabled]="loading()" [class.active]="selectedPeriod() === 'month'" [attr.aria-pressed]="selectedPeriod() === 'month'">{{ t.t('stats.monthly') }}</button></div></header>
 
   <div class="stats-content">
     <section *ngIf="error()" class="status-panel" role="alert"><div><strong>{{ t.t('stats.loadErrorTitle') }}</strong><p>{{ error() }}</p></div><button type="button" (click)="loadStats()">{{ t.t('stats.retry') }}</button></section>
-    <section *ngIf="loading()" class="loading-state" aria-live="polite" aria-busy="true"><i></i><i></i><span>{{ t.t('stats.loading') }}</span></section>
+    <section *ngIf="loading()" class="loading-state" aria-live="polite" aria-busy="true"><i></i><i></i><span>{{ statsRequest.waitingForServer() ? 'El servidor está tardando un poco más de lo normal.' : t.t('stats.loading') }}</span></section>
 
-    <ng-container *ngIf="!loading() && !error()">
+    <ng-container *ngIf="(!loading() || hasConfirmedData()) && (!error() || hasConfirmedData())">
       <section *ngIf="currentStats().workoutCount > 0" class="performance-lead" [attr.aria-label]="t.t('stats.periodSummary')">
         <article class="lead-measure"><span>{{ t.t('stats.sessions') }}</span><strong>{{ currentStats().workoutCount | number:'1.0-0' }}</strong><p *ngIf="hasPreviousValue('workouts'); else noWorkoutBase">{{ comparisonFor('workouts') > 0 ? '+' : '' }}{{ comparisonFor('workouts') | number:'1.0-1' }}% frente al periodo anterior</p><ng-template #noWorkoutBase><p>{{ t.t('stats.noPreviousBase') }}</p></ng-template></article>
         <div class="support-measures">

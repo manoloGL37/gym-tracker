@@ -5,8 +5,8 @@
     <section class="program-list" aria-labelledby="program-list-title">
       <header><h2 id="program-list-title">{{ routines.length }} planes listos</h2><span>Toca editar para cambiar el orden</span></header>
       @if (error(); as message) { <p class="routine-error" role="alert">{{ message }}</p> }
-      @if (loading || cloudLoading) { <div class="routine-loading" aria-live="polite" aria-busy="true"><i></i><i></i><i></i><span>Cargando rutinas…</span></div> }
-      @if (!loading && routines.length) {
+      @if (loading || cloudLoading) { <div class="routine-loading" aria-live="polite" aria-busy="true"><i></i><i></i><i></i><span>{{ cloudLoading ? 'Estamos cargando tus datos…' : 'Cargando rutinas…' }}</span></div> }
+      @if ((!loading || routines.length) && routines.length) {
         <ol>
           @for (item of routines; track routineKey(item); let i = $index) {
             <li>
@@ -55,7 +55,7 @@
               }
               <button type="button" (click)="addLocalExerciseBlock()" class="add-exercise"><span><b aria-hidden="true">+</b> Añadir ejercicio</span><small>Escribir un ejercicio</small></button>
             </div>
-            <footer><button type="button" (click)="cancelEdit()">Cancelar</button><button type="submit" [disabled]="!localName.trim() || !localExercises.length">Guardar rutina</button></footer>
+            <footer><button type="button" (click)="cancelEdit()">Cancelar</button><button type="submit" [disabled]="saving() || !localName.trim() || !localExercises.length">{{ saving() ? 'Guardando…' : 'Guardar rutina' }}</button></footer>
           </form>
         }
       </aside>
