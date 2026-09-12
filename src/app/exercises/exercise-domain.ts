@@ -35,6 +35,15 @@ export function createCustomExerciseDraft(language: string): CustomExerciseDraft
   };
 }
 
+export function isCustomExerciseDraftValid(draft: CustomExerciseDraft): boolean {
+  return Boolean(draft.name.trim())
+    && Boolean(draft.language.trim())
+    && draft.name.trim().length <= 255
+    && draft.language.trim().length <= 10
+    && [draft.category, draft.equipment, draft.targetMuscle, draft.muscleGroup]
+      .every(value => value.trim().length <= 100);
+}
+
 export function getExerciseTranslation(exercise: BackendExercise, language: string): ExerciseTranslation | null {
   return exercise.translations.find(translation => translation.language === language)
     ?? exercise.translations.find(translation => translation.language === 'en')
