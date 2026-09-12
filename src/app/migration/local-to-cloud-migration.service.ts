@@ -47,7 +47,7 @@ export class LocalToCloudMigrationService {
       routines: routines.length, workouts: workouts.length, exerciseReferences: references.length,
       // A pending custom choice is resolved by the user and can be safely retried; only a
       // missing choice needs another decision.
-      unresolvedExercises: references.filter(reference => !ledger.exercises[reference.key]).length,
+      unresolvedExercises: references.filter(reference => !ledger.exercises[reference.key] || ledger.exercises[reference.key].status === 'failed').length,
       unsupportedWorkouts: unsupported, activeTraining: active !== undefined, bodyWeightEntries: weights.length,
       observations: workouts.flatMap(workout => workout.exercises).filter(exercise => Boolean(exercise.observation?.trim())).length,
       hasOtherAccountMigration: ledgers.some(value => value.accountId !== accountId && Object.keys(value.routines).length + Object.keys(value.workouts).length > 0),
@@ -73,7 +73,10 @@ export class LocalToCloudMigrationService {
 
   async unresolvedReferences(accountId: string): Promise<{ key: string; name: string }[]> {
     const ledger = await this.getLedger(accountId);
-    return localExerciseReferences(await RoutinesRepository.getAll()).filter(reference => !ledger.exercises[reference.key]);
+    return localExerciseReferences(await RoutinesRepository.getAll()).filter(reference => {
+      const mapping = ledger.exercises[reference.key];
+      return !mapping || mapping.status === 'failed';
+    });
   }
 
   async chooseCatalogExercise(accountId: string, localKey: string, exercise: ExerciseResponse): Promise<void> {
@@ -99,6 +102,7 @@ export class LocalToCloudMigrationService {
     const ledger = await this.getLedger(accountId);
     ledger.postponed = false;
     await this.ensureClientIds(ledger);
+    await this.classifyExercises(ledger);
     const preview = await this.getPreview(accountId);
     if (preview.routines === 0 && preview.workouts === 0) {
       ledger.status = preview.bodyWeightEntries || preview.activeTraining ? 'completed-local-only' : 'no-local-data';
@@ -150,6 +154,32 @@ export class LocalToCloudMigrationService {
       ledger.workouts[workout.id] ??= pendingMapping();
       for (const exercise of workout.exercises) for (const set of exercise.sets) ledger.sets[setKey(workout.id, exercise.exerciseId, set.setIndex)] ??= pendingMapping();
     }
+    await this.save(ledger);
+  }
+
+  /**
+   * Routine editing has always generated a UUID for each free-text local exercise.
+   * That UUID is therefore an unambiguous local custom identity, unlike older opaque ids.
+   */
+  private async classifyExercises(ledger: MigrationLedger): Promise<void> {
+    for (const reference of localExerciseReferences(await RoutinesRepository.getAll())) {
+      const existing = ledger.exercises[reference.key];
+      if (existing?.serverId) {
+        existing.status = 'migrated';
+        delete existing.error;
+        continue;
+      }
+      if (!existing && isSafeLocalCustomExercise(reference)) {
+        ledger.exercises[reference.key] = {
+          localKey: reference.key,
+          name: reference.name.trim(),
+          choice: 'custom',
+          clientId: crypto.randomUUID(),
+          status: 'pending',
+        };
+      }
+    }
+    // Persist the clientId before the first POST, so an interrupted request is idempotent.
     await this.save(ledger);
   }
 
@@ -262,6 +292,16 @@ function failureStatus(error: unknown): MigrationRecordStatus {
   if (error instanceof HttpErrorResponse && (error.status === 0 || error.status === 408 || error.status === 429 || error.status >= 500)) return 'pending';
   if (error instanceof Error && error.name === 'TimeoutError') return 'pending';
   return 'failed';
+}
+
+function isSafeLocalCustomExercise(reference: { key: string; name: string }): boolean {
+  const localId = reference.key.slice('exercise:'.length);
+  const name = reference.name.trim();
+  return isUuid(localId) && Boolean(name) && name.length <= 255;
+}
+
+function isUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
 function localExerciseReferences(routines: Routine[]): { key: string; name: string }[] {

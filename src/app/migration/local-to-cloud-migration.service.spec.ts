@@ -49,6 +49,52 @@ describe('LocalToCloudMigrationService', () => {
     expect((await service.getLedger('account-a')).status).toBe('needs-resolution');
   });
 
+  it('automatically creates a safe local custom exercise and reuses its mapping in its routine', async () => {
+    const exerciseId = crypto.randomUUID();
+    await db.routines.put(localRoutine('routine-1', exerciseId, 'Mi press'));
+    exerciseApi.create.and.returnValue(of({ id: 'server-exercise' } as any));
+    routineApi.create.and.returnValue(of({ id: 'server-routine', clientId: 'routine-client', name: 'Local', description: null, exercises: [], createdAt: '', updatedAt: '' }));
+
+    await service.start('account-a');
+
+    const ledger = await service.getLedger('account-a');
+    const mapping = ledger.exercises[routineExerciseKey('routine-1', exerciseId)];
+    expect(mapping.status).toBe('migrated');
+    expect(exerciseApi.create).toHaveBeenCalledWith(jasmine.objectContaining({ clientId: mapping.clientId, translations: [{ language: 'es', name: 'Mi press', instructions: null }] }));
+    expect(routineApi.create).toHaveBeenCalledWith(jasmine.objectContaining({ exercises: [jasmine.objectContaining({ exerciseId: 'server-exercise' })] }));
+  });
+
+  it('keeps the custom exercise clientId across a temporary failure and retry', async () => {
+    const exerciseId = crypto.randomUUID();
+    await db.routines.put(localRoutine('routine-1', exerciseId));
+    exerciseApi.create.and.returnValue(throwError(() => new HttpErrorResponse({ status: 503 })));
+
+    await service.start('account-a');
+    const first = (await service.getLedger('account-a')).exercises[routineExerciseKey('routine-1', exerciseId)];
+    expect(first.status).toBe('pending');
+
+    exerciseApi.create.and.returnValue(of({ id: 'server-exercise' } as any));
+    routineApi.create.and.returnValue(of({ id: 'server-routine', clientId: 'routine-client', name: 'Local', description: null, exercises: [], createdAt: '', updatedAt: '' }));
+    await service.start('account-a');
+    const second = (await service.getLedger('account-a')).exercises[routineExerciseKey('routine-1', exerciseId)];
+
+    expect(second.clientId).toBe(first.clientId);
+    expect(second.status).toBe('migrated');
+    expect(exerciseApi.create.calls.allArgs().map(args => args[0].clientId)).toEqual([first.clientId!, first.clientId!]);
+  });
+
+  it('leaves only an ambiguous legacy exercise for attention while synchronizing independent custom exercises', async () => {
+    const customId = crypto.randomUUID();
+    await db.routines.bulkPut([localRoutine('custom-routine', customId), localRoutine('legacy-routine', 'legacy-exercise')]);
+    exerciseApi.create.and.returnValue(of({ id: 'server-exercise' } as any));
+    routineApi.create.and.returnValue(of({ id: 'server-routine', clientId: 'routine-client', name: 'Local', description: null, exercises: [], createdAt: '', updatedAt: '' }));
+
+    await service.start('account-a');
+
+    expect((await service.unresolvedReferences('account-a'))).toEqual([{ key: routineExerciseKey('legacy-routine', 'legacy-exercise'), name: 'Press' }]);
+    expect((await service.getLedger('account-a')).routines['custom-routine'].status).toBe('migrated');
+  });
+
   it('does not upload a historical snapshot that differs from its original routine and never deletes it', async () => {
     await db.routines.put(localRoutine('routine-1', 'exercise-1'));
     await db.workoutHistory.put({
@@ -102,6 +148,6 @@ describe('LocalToCloudMigrationService', () => {
   });
 });
 
-function localRoutine(id: string, exerciseId: string): Routine {
-  return { id, name: 'Local', exercises: [{ id: exerciseId, name: 'Press', setsCount: 3 }] };
+function localRoutine(id: string, exerciseId: string, exerciseName = 'Press'): Routine {
+  return { id, name: 'Local', exercises: [{ id: exerciseId, name: exerciseName, setsCount: 3 }] };
 }

@@ -1,4 +1,4 @@
-import { Component, OnInit, computed, inject, signal } from '@angular/core';
+import { Component, OnInit, computed, effect, inject, signal } from '@angular/core';
 import { TranslationService, Lang } from '../../services/translation.service';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -70,6 +70,14 @@ export class SettingsComponent implements OnInit {
   migrationSearch = '';
   migrationCatalog = signal<ExerciseResponse[]>([]);
 
+  constructor() {
+    effect(() => {
+      this.auth.currentUser();
+      this.accountSync.status();
+      void this.loadMigration();
+    });
+  }
+
   ngOnInit() {
     this.refreshStorageInfo();
     void this.loadMigration();
@@ -95,15 +103,23 @@ export class SettingsComponent implements OnInit {
   async selectMigrationCatalogExercise(exercise: ExerciseResponse): Promise<void> {
     const accountId = this.auth.currentUser()?.id; const reference = this.resolving();
     if (!accountId || !reference) return;
-    await this.migration.chooseCatalogExercise(accountId, reference.key, exercise);
-    this.resolving.set(null); await this.loadMigration(); this.accountSync.retryNow();
+    this.migrationBusy.set(true); this.migrationError.set(null);
+    try {
+      await this.migration.chooseCatalogExercise(accountId, reference.key, exercise);
+      this.resolving.set(null); await this.loadMigration(); this.accountSync.retryNow();
+    } catch { this.migrationError.set('No se pudo guardar la identificación. Inténtalo de nuevo.'); }
+    finally { this.migrationBusy.set(false); }
   }
 
   async createMigrationCustomExercise(): Promise<void> {
     const accountId = this.auth.currentUser()?.id; const reference = this.resolving();
     if (!accountId || !reference) return;
-    await this.migration.chooseCustomExercise(accountId, reference.key);
-    this.resolving.set(null); await this.loadMigration(); this.accountSync.retryNow();
+    this.migrationBusy.set(true); this.migrationError.set(null);
+    try {
+      await this.migration.chooseCustomExercise(accountId, reference.key);
+      this.resolving.set(null); await this.loadMigration(); this.accountSync.retryNow();
+    } catch { this.migrationError.set('No se pudo preparar el ejercicio. Inténtalo de nuevo.'); }
+    finally { this.migrationBusy.set(false); }
   }
 
   migrationExerciseName(exercise: ExerciseResponse): string { return getExerciseName(exercise, this.t.lang()); }
@@ -112,7 +128,7 @@ export class SettingsComponent implements OnInit {
     const completed = this.accountSync.completed();
     const total = this.accountSync.total();
     switch (this.accountSync.status()) {
-      case 'syncing': return total ? `Sincronizando con tu cuenta · ${completed} de ${total}` : 'Sincronizando con tu cuenta';
+      case 'syncing': return total ? `Sincronizando ejercicios · ${completed}/${total}` : 'Sincronizando ejercicios';
       case 'waiting': return 'Esperando conexión';
       case 'attention': {
         const count = this.accountSync.attention();
