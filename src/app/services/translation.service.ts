@@ -1,4 +1,4 @@
-import { Injectable, Signal, signal } from '@angular/core';
+import { Injectable, signal } from '@angular/core';
 
 export type Lang = 'en' | 'es';
 
@@ -6,7 +6,7 @@ export type Lang = 'en' | 'es';
 export class TranslationService {
   private langSignal = signal<Lang>(this.getInitialLang());
   private translations: Record<Lang, any> = { en: {}, es: {} };
-  private loaded = false;
+  private loaded = signal(false);
 
   lang = this.langSignal.asReadonly();
 
@@ -28,11 +28,11 @@ export class TranslationService {
     ]);
     this.translations.en = en.default;
     this.translations.es = es.default;
-    this.loaded = true;
+    this.loaded.set(true);
   }
 
   t(key: string, params?: Record<string, any>): string {
-    if (!this.loaded) return key;
+    if (!this.loaded()) return key;
     const dict = this.translations[this.langSignal()];
     let value = dict[key] || key;
     if (params) {

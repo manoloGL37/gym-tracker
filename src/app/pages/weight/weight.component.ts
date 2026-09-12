@@ -74,6 +74,7 @@ export class WeightComponent implements OnInit {
   }
 
   async delete(date: string) {
+    if (!window.confirm(this.t.t('weight.deleteConfirm'))) return;
     await BodyWeightRepository.delete(date);
     await this.loadEntries();
     await this.prefillToday();

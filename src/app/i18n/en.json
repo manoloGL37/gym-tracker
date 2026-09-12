@@ -44,6 +44,7 @@
   "weight.cancel": "Cancel",
   "weight.edit": "Edit",
   "weight.delete": "Delete",
+  "weight.deleteConfirm": "Delete this weight entry? This action cannot be undone.",
   "weight.history": "History",
   "weight.noData": "No weight records yet.",
   "weight.loading": "Loading...",
