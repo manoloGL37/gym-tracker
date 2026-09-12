@@ -49,8 +49,7 @@ export class CalendarComponent implements OnInit {
     this.loading = true;
     const rawLocal = await WorkoutHistoryRepository.getAll();
     const accountId = this.auth.currentUser?.()?.id;
-    const migrated = accountId ? await Promise.all(rawLocal.map(workout => this.migration.isWorkoutMigrated(accountId, workout.id))) : rawLocal.map(() => false);
-    const local = rawLocal.filter((_, index) => !migrated[index]);
+    const local = accountId ? await this.migration.getPendingLocalWorkouts(accountId) : rawLocal;
     const localItems = local.map(workout => ({ source: 'local' as const, id: workout.id, routineName: workout.routineName, startedAt: workout.startedAt, finishedAt: workout.finishedAt, exerciseCount: workout.exercises.length, local: workout }));
     if (!this.auth.isAuthenticated()) { this.workouts = localItems; this.loading = false; return; }
     try {
@@ -60,12 +59,13 @@ export class CalendarComponent implements OnInit {
         try { return (await firstValueFrom(this.routineApi.get(workout.routineId))).name; } catch { return 'Rutina sin nombre'; }
       }));
       this.cloudPageNumber = cloud.number; this.cloudTotalPages = cloud.totalPages;
-      this.workouts = [...localItems, ...cloud.content.map((workout, index) => ({ source: 'cloud' as const, id: workout.id, routineName: names[index], startedAt: workout.startedAt, finishedAt: workout.completedAt, exerciseCount: workout.exercises.length }))];
+      this.workouts = sortWorkouts([...localItems, ...cloud.content.map((workout, index) => ({ source: 'cloud' as const, id: workout.id, routineName: names[index], startedAt: workout.startedAt, finishedAt: workout.completedAt, exerciseCount: workout.exercises.length }))]);
       this.cloudError = null;
       this.loading = false;
     } catch {
       // Deliberately retain legacy records even when cloud history cannot load.
-      this.workouts = rawLocal.map(workout => ({ source: 'local' as const, id: workout.id, routineName: workout.routineName, startedAt: workout.startedAt, finishedAt: workout.finishedAt, exerciseCount: workout.exercises.length, local: workout }));
+      const fallback = accountId ? await this.migration.getAccountLocalWorkouts(accountId) : rawLocal;
+      this.workouts = fallback.map(workout => ({ source: 'local' as const, id: workout.id, routineName: workout.routineName, startedAt: workout.startedAt, finishedAt: workout.finishedAt, exerciseCount: workout.exercises.length, local: workout }));
       this.cloudError = 'No se pudo cargar todo el historial. Tus sesiones anteriores siguen disponibles.';
       this.loading = false;
     }
@@ -79,4 +79,8 @@ export class CalendarComponent implements OnInit {
   getWorkoutsForDay(day: Date): CalendarWorkoutItem[] { return this.workouts.filter(workout => this.isSameDay(workout.startedAt, day)); }
   async previousCloudPage() { if (this.cloudPageNumber > 0) await this.loadWorkouts(this.cloudPageNumber - 1); }
   async nextCloudPage() { if (this.cloudPageNumber + 1 < this.cloudTotalPages) await this.loadWorkouts(this.cloudPageNumber + 1); }
+}
+
+function sortWorkouts(workouts: CalendarWorkoutItem[]): CalendarWorkoutItem[] {
+  return workouts.sort((a, b) => new Date(b.finishedAt ?? b.startedAt).getTime() - new Date(a.finishedAt ?? a.startedAt).getTime());
 }

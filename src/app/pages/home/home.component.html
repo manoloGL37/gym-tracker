@@ -24,6 +24,7 @@
         }
       </div>
       <aside class="week-score" aria-label="Resumen de esta semana">
+        @if (workoutSyncText()) { <p class="workout-sync" aria-live="polite">{{ workoutSyncText() }}</p> }
         <div><strong>{{ weekWorkoutCount }}</strong><span>sesiones</span></div>
         <div><strong>{{ weekVolume | number:'1.0-0' }}</strong><span>kg totales</span></div>
         <div><strong>@if (latestWeight) { {{ latestWeight.weight | number:'1.1-1' }} } @else { — }</strong><span>kg corporal</span></div>

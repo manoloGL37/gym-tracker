@@ -21,6 +21,7 @@ export class AccountSyncService implements OnDestroy {
   readonly completed = signal(0);
   readonly total = signal(0);
   readonly attention = signal(0);
+  readonly pendingWorkouts = signal(0);
 
   constructor() {
     globalThis.addEventListener?.('online', this.onlineListener);
@@ -41,6 +42,13 @@ export class AccountSyncService implements OnDestroy {
     void this.run();
   }
 
+  /** A newly completed local workout is a new queue item, even after a previously clean pass. */
+  notifyPendingWork(): void {
+    if (!this.accountId) return;
+    this.hasPendingWork = true;
+    this.retryNow();
+  }
+
   /** Connectivity and foreground are hints: only resume work known to be pending. */
   resumePendingSync(): void {
     if (this.hasPendingWork) this.retryNow();
@@ -57,6 +65,7 @@ export class AccountSyncService implements OnDestroy {
     this.completed.set(0);
     this.total.set(0);
     this.attention.set(0);
+    this.pendingWorkouts.set(0);
   }
 
   ngOnDestroy(): void {
@@ -85,6 +94,7 @@ export class AccountSyncService implements OnDestroy {
         this.completed.set(initial.completed);
         this.total.set(initial.total);
         this.attention.set(initial.attention);
+        this.pendingWorkouts.set(initial.pendingWorkouts);
       }).catch(() => undefined);
       await this.migration.start(accountId);
       const progress = await this.migration.getProgress(accountId);
@@ -92,6 +102,7 @@ export class AccountSyncService implements OnDestroy {
       this.completed.set(progress.completed);
       this.total.set(progress.total);
       this.attention.set(progress.attention);
+      this.pendingWorkouts.set(progress.pendingWorkouts);
       this.retryAttempt = progress.pending ? this.retryAttempt + 1 : 0;
       this.hasPendingWork = progress.pending > 0;
       this.status.set(progress.attention ? 'attention' : progress.pending ? 'waiting' : 'synced');

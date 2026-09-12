@@ -11,6 +11,7 @@ import { WorkoutHistory } from '../../data/workout-history.model';
 import { ExerciseApiService } from '../../exercises/exercise-api.service';
 import { ExerciseResponse } from '../../exercises/exercise-api.models';
 import { LocalToCloudMigrationService } from '../../migration/local-to-cloud-migration.service';
+import { AccountSyncService } from '../../migration/account-sync.service';
 import { TranslationService } from '../../services/translation.service';
 import { StatisticsApiService } from '../../statistics/statistics-api.service';
 import { StatsComponent, toCalendarDate } from './stats.component';
@@ -57,7 +58,7 @@ describe('StatsComponent', () => {
   let exercisesApi: jasmine.SpyObj<ExerciseApiService>;
   let migration: jasmine.SpyObj<LocalToCloudMigrationService>;
 
-  async function create(isAuthenticated: boolean): Promise<void> {
+  async function create(isAuthenticated: boolean, pendingWorkoutCount = 0): Promise<void> {
     authenticated = signal(isAuthenticated);
     currentUser = signal(isAuthenticated ? { id: 'account-id' } : null);
     api = jasmine.createSpyObj<StatisticsApiService>('StatisticsApiService', ['summary', 'comparison', 'evolution', 'exercise']);
@@ -95,6 +96,7 @@ describe('StatsComponent', () => {
         { provide: StatisticsApiService, useValue: api },
         { provide: ExerciseApiService, useValue: exercisesApi },
         { provide: LocalToCloudMigrationService, useValue: migration },
+        { provide: AccountSyncService, useValue: { status: signal(pendingWorkoutCount ? 'waiting' : 'synced'), pendingWorkouts: signal(pendingWorkoutCount) } },
         { provide: TranslationService, useValue: { t: (key: string) => key, lang: signal('es') } },
       ],
     }).compileComponents();
@@ -134,6 +136,13 @@ describe('StatsComponent', () => {
     expect(component.currentStats().totalVolume).toBe(1600);
     expect(component.currentStats().totalVolume).not.toBe(2330);
     expect(api.comparison).toHaveBeenCalledTimes(1);
+  });
+
+  it('warns that account statistics are still updating while workouts are pending', async () => {
+    await create(true, 2);
+    fixture.detectChanges();
+    expect((fixture.nativeElement.textContent as string)).toContain('Sincronizando entrenamientos');
+    expect(component.currentStats().workoutCount).toBe(2);
   });
 
   it('maps backend evolution directly into the volume chart without artificial missing dates', async () => {

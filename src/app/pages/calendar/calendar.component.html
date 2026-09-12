@@ -12,7 +12,7 @@
           @for (w of workouts; track w.id; let i = $index) {
             <article class="diary-entry">
               <time><strong>{{ (w.finishedAt || w.startedAt) | date:'dd' }}</strong><span>{{ (w.finishedAt || w.startedAt) | date:'MMM' }}</span><small>{{ (w.finishedAt || w.startedAt) | date:'y' }}</small></time>
-              <a [routerLink]="['/calendar', w.id]" [queryParams]="{ source: w.source }"><span>{{ w.source === 'cloud' ? 'EN TU CUENTA' : 'EN ESTE DISPOSITIVO' }}</span><h2>{{ w.routineName }}</h2><p>{{ w.exerciseCount }} ejercicios @if (!w.finishedAt && w.source === 'cloud') { · En curso }</p><b>Ver registro <i aria-hidden="true">↗</i></b></a>
+              <a [routerLink]="['/calendar', w.id]" [queryParams]="{ source: w.source }"><span>{{ w.finishedAt ? 'SESIÓN COMPLETADA' : 'SESIÓN EN CURSO' }}</span><h2>{{ w.routineName }}</h2><p>{{ w.exerciseCount }} ejercicios @if (!w.finishedAt) { · En curso }</p><b>Ver registro <i aria-hidden="true">↗</i></b></a>
               @if (w.source === 'local') { <button type="button" (click)="onDeleteWorkout(w)" aria-label="Eliminar entrenamiento">Eliminar</button> }
             </article>
           }

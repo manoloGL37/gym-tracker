@@ -19,6 +19,7 @@
 .launch-lane button { display:flex; width:100%; min-height:3.45rem; align-items:center; justify-content:space-between; border:0; padding:0 .85rem 0 1rem; background:var(--signal); color:var(--ink); font-size:.84rem; font-weight:820; text-align:left; }
 .launch-lane button span { color:var(--ink); font-size:1.15rem; }
 .week-score { grid-column:1/-1; display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); border-top:1px solid rgb(255 255 255 / .15); }
+.workout-sync { grid-column:1/-1; margin:0!important; padding:.55rem .7rem; border-bottom:1px solid rgb(255 255 255 / .12); color:#c9cfd8!important; font-size:.62rem!important; }
 .week-score div { min-width:0; padding:.9rem .7rem; border-right:1px solid rgb(255 255 255 / .12); }
 .week-score strong,.week-score span { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .week-score strong { color:var(--paper); font-family:var(--numeric-font); font-size:1.45rem; font-variant-numeric:tabular-nums; letter-spacing:-.035em; }
