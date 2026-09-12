@@ -5,6 +5,7 @@ import { FormsModule } from '@angular/forms';
 import { RoutinesRepository, Routine, WorkoutHistoryRepository } from '../../data/active-training.repository';
 import { v4 as uuidv4 } from 'uuid';
 import { TranslationService } from '../../services/translation.service';
+import { AccountSyncService } from '../../migration/account-sync.service';
 
 @Component({
   selector: 'app-add-workout',
@@ -22,6 +23,7 @@ export class AddWorkoutComponent {
   selectedRoutine: Routine | null = null;
   exercises: { id: string; name: string; sets: { reps: number|null; weight: number|null; }[]; observation?: string }[] = [];
   saving = false;
+  private readonly accountSync = inject(AccountSyncService);
 
   constructor(private router: Router) {
     this.loadRoutines();
@@ -62,6 +64,7 @@ export class AddWorkoutComponent {
         observation: ex.observation,
       })),
     });
+    this.accountSync.notifyPendingWork();
     this.saving = false;
     this.router.navigate(['/home']);
   }

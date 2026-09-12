@@ -10,7 +10,7 @@ describe('AccountSyncService', () => {
     jasmine.clock().install();
     migration = jasmine.createSpyObj<LocalToCloudMigrationService>('LocalToCloudMigrationService', ['start', 'getProgress']);
     migration.start.and.resolveTo({} as any);
-    migration.getProgress.and.resolveTo({ completed: 3, total: 3, pending: 0, attention: 0 });
+    migration.getProgress.and.resolveTo({ completed: 3, total: 3, pending: 0, pendingWorkouts: 0, attention: 0 });
     TestBed.configureTestingModule({ providers: [
       AccountSyncService,
       { provide: LocalToCloudMigrationService, useValue: migration },
@@ -42,7 +42,7 @@ describe('AccountSyncService', () => {
 
   it('shows existing progress immediately while exercise synchronization is running', async () => {
     let release!: () => void;
-    migration.getProgress.and.resolveTo({ completed: 1, total: 3, pending: 2, attention: 0 });
+    migration.getProgress.and.resolveTo({ completed: 1, total: 3, pending: 2, pendingWorkouts: 1, attention: 0 });
     migration.start.and.returnValue(new Promise<void>(resolve => release = resolve) as any);
 
     service.start('account-a');
@@ -92,4 +92,27 @@ describe('AccountSyncService', () => {
     expect(migration.start).toHaveBeenCalledTimes(1);
     release();
   });
+
+  it('starts a new pass when a local workout completes after a clean sync', async () => {
+    service.start('account-a');
+    await flushPromises();
+
+    service.notifyPendingWork();
+
+    expect(migration.start).toHaveBeenCalledTimes(2);
+  });
+
+  it('resumes known pending work after connectivity recovery', async () => {
+    migration.getProgress.and.resolveTo({ completed: 1, total: 2, pending: 1, pendingWorkouts: 1, attention: 0 });
+    service.start('account-a');
+    await flushPromises();
+
+    window.dispatchEvent(new Event('online'));
+
+    expect(migration.start).toHaveBeenCalledTimes(2);
+  });
 });
+
+async function flushPromises(): Promise<void> {
+  for (let index = 0; index < 10; index++) await Promise.resolve();
+}

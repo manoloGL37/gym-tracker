@@ -14,6 +14,7 @@ import { WorkoutApiService } from '../../workouts/workout-api.service';
 import { CloudActiveExercise, CloudActiveTraining, cloudActiveFromWorkout, fillCloudPlannedSets, newCloudSetDraft, toBackendLocalDateTime } from '../../workouts/workout-domain';
 import { WorkoutResponse } from '../../workouts/workout-api.models';
 import { RoutineApiService } from '../../routines/routine-api.service';
+import { AccountSyncService } from '../../migration/account-sync.service';
 
 type SetBenchmark = { reps: number | null; weight: number | null };
 type BenchmarkIndex = Map<string, Map<number, SetBenchmark>>;
@@ -42,6 +43,7 @@ export class TrainingComponent implements OnInit, AfterViewInit, OnDestroy {
   private readonly workoutApi = inject(WorkoutApiService);
   private readonly routineApi = inject(RoutineApiService);
   private readonly exerciseApi = inject(ExerciseApiService);
+  private readonly accountSync = inject(AccountSyncService);
   private localBenchmarks: BenchmarkIndex = new Map();
   private cloudBenchmarks: BenchmarkIndex = new Map();
 
@@ -316,6 +318,7 @@ export class TrainingComponent implements OnInit, AfterViewInit, OnDestroy {
     if (this.training) {
       const finishedAt = new Date().toISOString(); const { id, ...rest } = this.training;
       await WorkoutHistoryRepository.add({ id: `${this.training.startedAt}-${finishedAt}`, ...rest, finishedAt });
+      this.accountSync.notifyPendingWork();
       await ActiveTrainingRepository.clear(); await SelectedRoutineRepository.clear(); this.router.navigate(['/home']); return;
     }
     if (!this.cloudTraining || this.hasUnsubmittedCloudSets()) { if (this.hasUnsubmittedCloudSets()) this.cloudError = 'Guarda o elimina los borradores de series antes de finalizar.'; return; }

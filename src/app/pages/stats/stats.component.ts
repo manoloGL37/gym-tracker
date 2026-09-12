@@ -22,6 +22,7 @@ import { ExerciseApiService } from '../../exercises/exercise-api.service';
 import { ExerciseResponse } from '../../exercises/exercise-api.models';
 import { getExerciseName } from '../../exercises/exercise-domain';
 import { LocalToCloudMigrationService } from '../../migration/local-to-cloud-migration.service';
+import { AccountSyncService } from '../../migration/account-sync.service';
 import { TranslationService } from '../../services/translation.service';
 import { AsyncRequestState } from '../../services/async-request-state';
 import { StatisticsApiService } from '../../statistics/statistics-api.service';
@@ -116,6 +117,7 @@ export class StatsComponent implements OnInit {
   private readonly statisticsApi = inject(StatisticsApiService);
   private readonly exercisesApi = inject(ExerciseApiService);
   private readonly migration = inject(LocalToCloudMigrationService);
+  private readonly accountSync = inject(AccountSyncService);
 
   readonly selectedPeriod = signal<Period>('week');
   /** Period represented by the last response committed to the main chart. */
@@ -128,6 +130,12 @@ export class StatsComponent implements OnInit {
   readonly hasConfirmedData = signal(false);
   readonly source = signal<StatisticsSource>('local');
   readonly error = signal<string | null>(null);
+  readonly migrationPending = computed(() => this.auth.isAuthenticated() && (
+    this.accountSync.pendingWorkouts() > 0
+    || this.accountSync.status() === 'syncing'
+    || this.accountSync.status() === 'retrying'
+    || this.accountSync.status() === 'waiting'
+  ));
 
   exerciseSearch = '';
   selectedExerciseId = '';

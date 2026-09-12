@@ -53,6 +53,13 @@ export class HomeComponent {
   private readonly routineApi = inject(RoutineApiService);
   private readonly workoutApi = inject(WorkoutApiService);
   private readonly statisticsApi = inject(StatisticsApiService);
+  readonly workoutSyncText = computed(() => {
+    if (!this.auth.isAuthenticated()) return null;
+    const pending = this.accountSync.pendingWorkouts();
+    if (this.accountSync.status() === 'syncing' || this.accountSync.status() === 'retrying') return 'Sincronizando entrenamientos...';
+    if (pending > 0) return pending === 1 ? '1 entrenamiento pendiente' : `${pending} entrenamientos pendientes`;
+    return null;
+  });
 
   // Signal for formatted date, recalculated on language change
   formattedDate = computed(() => {
@@ -87,7 +94,6 @@ export class HomeComponent {
     ]);
 
     const accountId = this.auth.currentUser?.()?.id;
-    const migrated = accountId ? await Promise.all(workouts.map(workout => this.migration.isWorkoutMigrated(accountId, workout.id))) : workouts.map(() => false);
     this.activeTraining = activeTraining ?? cloudActiveTraining;
     this.latestWeight = weightEntries[0] ?? null;
     if (!accountId) {
@@ -96,6 +102,12 @@ export class HomeComponent {
       return;
     }
 
+    const [pendingLocal, accountLocal, migratedRoutines] = await Promise.all([
+      this.migration.getPendingLocalWorkouts(accountId),
+      this.migration.getAccountLocalWorkouts(accountId),
+      Promise.all(routines.map(routine => this.migration.isRoutineMigrated(accountId, routine.id))),
+    ]);
+
     try {
       const range = this.currentWeekRange();
       const [summary, accountWorkouts, accountRoutines] = await Promise.all([
@@ -103,21 +115,30 @@ export class HomeComponent {
         firstValueFrom(this.workoutApi.list({ page: 0, size: 1 })),
         firstValueFrom(this.routineApi.list({ page: 0, size: 3 })),
       ]);
-      this.weekWorkoutCount = summary.workouts;
-      this.weekVolume = summary.volume;
+      const pendingThisWeek = this.getCurrentWeekWorkouts(pendingLocal);
+      this.weekWorkoutCount = summary.workouts + pendingThisWeek.length;
+      this.weekVolume = summary.volume + pendingThisWeek.reduce((sum, workout) => sum + this.calculateWorkoutVolume(workout), 0);
       const latest = accountWorkouts.content[0];
       let routineName = 'Rutina sin nombre';
       if (latest?.routineId) {
         try { routineName = (await firstValueFrom(this.routineApi.get(latest.routineId))).name; } catch { /* The workout remains readable. */ }
       }
-      this.lastWorkout = latest ? {
+      const latestPending = pendingLocal[0];
+      const latestIsPending = latestPending && (!latest || new Date(latestPending.finishedAt).getTime() > new Date(latest.completedAt ?? latest.startedAt).getTime());
+      this.lastWorkout = latestIsPending ? {
+        id: latestPending.id,
+        routineName: latestPending.routineName,
+        finishedAt: latestPending.finishedAt,
+        exerciseCount: latestPending.exercises.length,
+        accountBacked: false,
+      } : latest ? {
         id: latest.id,
         routineName,
         finishedAt: latest.completedAt ?? latest.startedAt,
         exerciseCount: latest.exercises.length,
         accountBacked: true,
       } : null;
-      const visibleStored = routines.filter((_, index) => !migrated[index]).map(routine => this.homeRoutine(routine));
+      const visibleStored = routines.filter((_, index) => !migratedRoutines[index]).map(routine => this.homeRoutine(routine));
       this.routineShortcuts = [
         ...accountRoutines.content.map(routine => ({ id: routine.id, name: routine.name, exerciseCount: null })),
         ...visibleStored,
@@ -125,7 +146,7 @@ export class HomeComponent {
       this.loading = false;
     } catch {
       // A temporary account failure is not an empty dashboard.
-      this.useStoredDashboard(workouts, routines);
+      this.useStoredDashboard(accountLocal, routines.filter((_, index) => !migratedRoutines[index]));
       this.loading = false;
     }
   }

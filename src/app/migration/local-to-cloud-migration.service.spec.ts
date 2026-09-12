@@ -146,8 +146,136 @@ describe('LocalToCloudMigrationService', () => {
     expect(first.status).toBe('pending');
     expect(second.clientId).toBe(first.clientId);
   });
+
+  it('marks multiple completed workouts pending automatically when their safe dependency is temporarily unavailable', async () => {
+    const exerciseId = crypto.randomUUID();
+    await db.routines.put(localRoutine('routine-1', exerciseId));
+    await db.workoutHistory.bulkPut([localWorkout('workout-a', 'routine-1', exerciseId), localWorkout('workout-b', 'routine-1', exerciseId), localWorkout('workout-c', 'routine-1', exerciseId)]);
+    exerciseApi.create.and.returnValue(throwError(() => new HttpErrorResponse({ status: 503 })));
+
+    await service.start('account-a');
+
+    const ledger = await service.getLedger('account-a');
+    expect(Object.values(ledger.workouts).map(mapping => mapping.status)).toEqual(['pending', 'pending', 'pending']);
+    expect((await service.getProgress('account-a')).pendingWorkouts).toBe(3);
+  });
+
+  it('migrates a safe workout and its sets once, then suppresses its local copy', async () => {
+    const exerciseId = crypto.randomUUID();
+    await db.routines.put(localRoutine('routine-1', exerciseId));
+    await db.workoutHistory.put(localWorkout('workout-1', 'routine-1', exerciseId));
+    exerciseApi.create.and.returnValue(of({ id: 'server-exercise' } as any));
+    routineApi.create.and.returnValue(of({ id: 'server-routine' } as any));
+    workoutApi.create.and.returnValue(of(serverWorkout('server-workout')));
+    workoutApi.createSet.and.returnValue(of({ id: 'server-set' } as any));
+
+    await service.start('account-a');
+    await service.start('account-a');
+
+    const ledger = await service.getLedger('account-a');
+    expect(ledger.workouts['workout-1']).toEqual(jasmine.objectContaining({ serverId: 'server-workout', status: 'migrated' }));
+    expect(workoutApi.create).toHaveBeenCalledTimes(1);
+    expect(workoutApi.createSet).toHaveBeenCalledTimes(1);
+    expect(await service.getPendingLocalWorkouts('account-a')).toEqual([]);
+    expect(await db.workoutHistory.get('workout-1')).toBeDefined();
+  });
+
+  it('reuses workout and set operation identities after ambiguous transient failures', async () => {
+    const exerciseId = crypto.randomUUID();
+    await db.routines.put(localRoutine('routine-1', exerciseId));
+    await db.workoutHistory.put(localWorkout('workout-1', 'routine-1', exerciseId));
+    exerciseApi.create.and.returnValue(of({ id: 'server-exercise' } as any));
+    routineApi.create.and.returnValue(of({ id: 'server-routine' } as any));
+    workoutApi.create.and.returnValues(
+      throwError(() => new HttpErrorResponse({ status: 503 })),
+      of(serverWorkout('server-workout')),
+      of(serverWorkout('server-workout')),
+    );
+    workoutApi.createSet.and.returnValues(
+      throwError(() => new HttpErrorResponse({ status: 503 })),
+      of({ id: 'server-set' } as any),
+    );
+
+    await service.start('account-a');
+    const firstLedger = await service.getLedger('account-a');
+    const workoutClientId = firstLedger.workouts['workout-1'].clientId;
+    const setClientId = Object.values(firstLedger.sets)[0].clientId;
+    await service.start('account-a');
+    await service.start('account-a');
+    await service.start('account-a');
+
+    expect(workoutApi.create.calls.allArgs().map(args => args[0].clientId)).toEqual([workoutClientId, workoutClientId, workoutClientId]);
+    expect(workoutApi.createSet.calls.allArgs().map(args => args[2].clientId)).toEqual([setClientId, setClientId]);
+    expect((await service.getLedger('account-a')).workouts['workout-1'].status).toBe('migrated');
+  });
+
+  it('blocks only the workout with an unresolved exercise and resumes it after resolution', async () => {
+    const resolvedId = 'legacy-resolved';
+    const blockedId = 'legacy-blocked';
+    await db.routines.bulkPut([localRoutine('resolved-routine', resolvedId), localRoutine('blocked-routine', blockedId)]);
+    await db.workoutHistory.bulkPut([localWorkout('resolved-workout', 'resolved-routine', resolvedId), localWorkout('blocked-workout', 'blocked-routine', blockedId)]);
+    await service.chooseCatalogExercise('account-a', routineExerciseKey('resolved-routine', resolvedId), { id: 'server-exercise-a' } as any);
+    routineApi.create.and.callFake((request: any) => of({ id: request.name === 'Local' ? `server-routine-${request.exercises[0].exerciseId}` : 'server-routine' } as any));
+    workoutApi.create.and.returnValue(of(serverWorkout('server-workout')));
+    workoutApi.createSet.and.returnValue(of({ id: 'server-set' } as any));
+
+    await service.start('account-a');
+    let ledger = await service.getLedger('account-a');
+    expect(ledger.workouts['resolved-workout'].status).toBe('migrated');
+    expect(ledger.workouts['blocked-workout'].status).toBe('blocked');
+
+    await service.chooseCatalogExercise('account-a', routineExerciseKey('blocked-routine', blockedId), { id: 'server-exercise-b' } as any);
+    await service.start('account-a');
+    ledger = await service.getLedger('account-a');
+    expect(ledger.workouts['blocked-workout'].status).toBe('migrated');
+    expect(workoutApi.create).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not expose or migrate workout rows already claimed by another account', async () => {
+    await db.workoutHistory.put(localWorkout('private-workout', 'routine-1', 'exercise-1'));
+    const first = await service.getLedger('account-a');
+    first.workouts['private-workout'] = { clientId: crypto.randomUUID(), status: 'pending', claimedAt: '2026-01-01T00:00:00.000Z' };
+    await db.migrationLedgers.put(first);
+
+    expect(await service.getPendingLocalWorkouts('account-b')).toEqual([]);
+    expect(await service.getAccountLocalWorkouts('account-b')).toEqual([]);
+  });
+
+  it('keeps the mandatory 3-local/1-server scenario at three through automatic synchronization', async () => {
+    const exerciseId = crypto.randomUUID();
+    await db.routines.put(localRoutine('routine-1', exerciseId));
+    await db.workoutHistory.bulkPut([localWorkout('workout-a', 'routine-1', exerciseId), localWorkout('workout-b', 'routine-1', exerciseId), localWorkout('workout-c', 'routine-1', exerciseId)]);
+    const ledger = await service.getLedger('account-a');
+    ledger.exercises[routineExerciseKey('routine-1', exerciseId)] = { localKey: routineExerciseKey('routine-1', exerciseId), name: 'Press', choice: 'custom', clientId: crypto.randomUUID(), serverId: 'server-exercise', status: 'migrated', claimedAt: ledger.createdAt };
+    ledger.routines['routine-1'] = { clientId: crypto.randomUUID(), serverId: 'server-routine', status: 'migrated', claimedAt: ledger.createdAt };
+    ledger.workouts['workout-a'] = { clientId: crypto.randomUUID(), serverId: 'server-workout-a', status: 'migrated', claimedAt: ledger.createdAt };
+    await db.migrationLedgers.put(ledger);
+    workoutApi.create.and.callFake(request => of(serverWorkout(`server-${request.clientId}`)));
+    workoutApi.createSet.and.callFake((_workoutId, _exerciseId, request) => of({ id: `server-${request.clientId}` } as any));
+
+    const pendingBefore = await service.getPendingLocalWorkouts('account-a');
+    expect(1 + pendingBefore.length).toBe(3);
+    await service.start('account-a');
+    await service.start('account-a');
+
+    expect(workoutApi.create).toHaveBeenCalledTimes(2);
+    expect(workoutApi.createSet).toHaveBeenCalledTimes(2);
+    const finalServerCount = 1 + workoutApi.create.calls.count();
+    expect(finalServerCount + (await service.getPendingLocalWorkouts('account-a')).length).toBe(3);
+  });
 });
 
 function localRoutine(id: string, exerciseId: string, exerciseName = 'Press'): Routine {
   return { id, name: 'Local', exercises: [{ id: exerciseId, name: exerciseName, setsCount: 3 }] };
+}
+
+function localWorkout(id: string, routineId: string, exerciseId: string) {
+  return {
+    id, routineId, routineName: 'Local', startedAt: '2026-09-08T10:00:00.000Z', finishedAt: '2026-09-08T11:00:00.000Z',
+    exercises: [{ exerciseId, name: 'Press', sets: [{ setIndex: 0, reps: 8, weight: 20 }] }],
+  };
+}
+
+function serverWorkout(id: string) {
+  return { id, exercises: [{ id: 'server-workout-exercise', position: 0, sets: [] }] } as any;
 }

@@ -19,6 +19,8 @@ export interface ExerciseMapping {
   clientId?: string;
   serverId?: string;
   status: MigrationRecordStatus;
+  /** First account claim; used to keep shared-device legacy rows isolated. */
+  claimedAt?: string;
   error?: string;
 }
 
@@ -26,6 +28,8 @@ export interface ResourceMapping {
   clientId: string;
   serverId?: string;
   status: MigrationRecordStatus;
+  /** First account claim; used to keep shared-device legacy rows isolated. */
+  claimedAt?: string;
   error?: string;
   localOnlyReason?: string;
 }
