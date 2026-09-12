@@ -4,7 +4,7 @@ import { signal } from '@angular/core';
 import { By } from '@angular/platform-browser';
 import { provideRouter } from '@angular/router';
 import { BaseChartDirective } from 'ng2-charts';
-import { of, throwError } from 'rxjs';
+import { Observable, of, throwError } from 'rxjs';
 import { AuthSessionService } from '../../auth/auth-session.service';
 import { WorkoutHistoryRepository } from '../../data/active-training.repository';
 import { WorkoutHistory } from '../../data/workout-history.model';
@@ -203,8 +203,30 @@ describe('StatsComponent', () => {
     expect(component.error()).toBe('stats.cloudError');
     fixture.detectChanges();
     expect(component.source()).toBe('cloud');
+    expect(component.currentStats().workoutCount).toBe(2);
     expect(fixture.debugElement.query(By.css('.source-switch'))).toBeNull();
     expect(fixture.nativeElement.textContent).not.toContain('stats.viewLocal');
+  });
+
+  it('shows extended waiting without losing the selected period or confirmed statistics', async () => {
+    await create(true);
+    let release!: () => void;
+    api.comparison.and.returnValue(new Observable(observer => {
+      release = () => { observer.next({
+        current: summary(2, 1600, 8, 64), previous: summary(1, 800, 5, 40),
+        changes: { workouts: 100, sets: 60, reps: 60, volume: 100, maxWeight: 5 },
+      }); observer.complete(); };
+    }));
+    const load = component.loadStats();
+    expect(component.loading()).toBeTrue();
+    jasmine.clock().tick(6_000);
+    expect(component.statsRequest.waitingForServer()).toBeTrue();
+    expect(component.selectedPeriod()).toBe('week');
+    expect(component.currentStats().workoutCount).toBe(2);
+    release();
+    await load;
+    expect(component.loading()).toBeFalse();
+    expect(component.statsRequest.waitingForServer()).toBeFalse();
   });
 
   it('searches the backend catalog and looks up exercise statistics by UUID and current range', async () => {

@@ -75,4 +75,21 @@ describe('AccountSyncService', () => {
     expect(service.status()).toBe('idle');
     expect(service.total()).toBe(0);
   });
+
+  it('does not start periodic recovery work when the last progress was fully synced', async () => {
+    service.start('account-a');
+    await Promise.resolve();
+    await Promise.resolve();
+    service.resumePendingSync();
+    expect(migration.start).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not start a duplicate run when foreground recovery happens during a sync', () => {
+    let release!: () => void;
+    migration.start.and.returnValue(new Promise<void>(resolve => release = resolve) as any);
+    service.start('account-a');
+    service.resumePendingSync();
+    expect(migration.start).toHaveBeenCalledTimes(1);
+    release();
+  });
 });

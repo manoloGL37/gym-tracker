@@ -86,7 +86,7 @@ export class RoutinesComponent {
       this.routines = [...localItems, ...cloud.content.map(routine => ({ source: 'cloud' as const, routine }))];
     } catch (error) {
       // Keep the last readable representation available while the account service wakes.
-      this.routines = rawLocal.map(routine => ({ source: 'local', routine }));
+      if (!this.routines.length) this.routines = localItems;
       this.error.set(routineErrorMessage(error));
     } finally {
       this.cloudLoading = false;

@@ -129,6 +129,7 @@ export class SettingsComponent implements OnInit {
     const total = this.accountSync.total();
     switch (this.accountSync.status()) {
       case 'syncing': return total ? `Sincronizando ejercicios · ${completed}/${total}` : 'Sincronizando ejercicios';
+      case 'retrying': return 'Reintentando sincronización...';
       case 'waiting': return 'Esperando conexión';
       case 'attention': {
         const count = this.accountSync.attention();

@@ -21,12 +21,12 @@
 
       @if (error()) { <p class="catalog-error" role="alert">{{ error() }} <button type="button" (click)="loadPage(pageNumber)">Reintentar</button></p> }
       @if (filtersError()) { <p class="filter-error">{{ filtersError() }} Puedes seguir buscando por texto.</p> }
-      @if (loading()) { <div class="catalog-loading" aria-live="polite" aria-busy="true"><i></i><i></i><i></i><i></i><span>Cargando catálogo…</span></div> }
-      @else { @if (page(); as result) {
+      @if (loading()) { <div class="catalog-loading" aria-live="polite" aria-busy="true"><i></i><i></i><i></i><i></i><span>{{ page() ? 'Actualizando catálogo…' : 'Cargando catálogo…' }}</span></div> }
+      @if (page(); as result) {
         @if (!result.content.length) { <section class="catalog-empty"><h2>Ningún ejercicio coincide</h2><p>Prueba otra palabra o elimina alguno de los filtros.</p><button type="button" (click)="openCreate()">Crear un ejercicio personalizado</button></section> }
         @else { <section class="result-list" aria-label="Resultados">@for (exercise of result.content; track exercise.id; let i = $index) { <button type="button" (click)="openDetail(exercise.id)"><span>{{ (result.page * result.size) + i + 1 | number:'2.0-0' }}</span><div><strong>{{ nameFor(exercise) }}</strong><small>{{ exercise.category || 'Sin categoría' }} · {{ exercise.muscleGroup || 'Grupo muscular sin indicar' }}</small></div><b>{{ exercise.source === 'USER' ? 'Personal' : 'Catálogo' }}</b><i aria-hidden="true">→</i></button> }</section> }
         <nav class="catalog-pagination" aria-label="Páginas del catálogo"><button type="button" (click)="previousPage()" [disabled]="loading() || result.page === 0">Anterior</button><span>{{ result.page + 1 }} / {{ result.totalPages }}</span><button type="button" (click)="nextPage()" [disabled]="loading() || result.page + 1 >= result.totalPages">Siguiente</button></nav>
-      } }
+      }
     } @else if (view() === 'detail') {
       @if (detail(); as exercise) { <section class="exercise-detail"><button type="button" (click)="backToCatalog()">← Volver al catálogo</button>@if (error()) { <p class="catalog-error" role="alert">{{ error() }}</p> }<header><span>{{ exercise.source === 'USER' ? 'PERSONALIZADO' : 'CATÁLOGO' }}</span><h1>{{ nameForDetail }}</h1></header>@if (detailTranslation?.instructions) { <p class="detail-instructions">{{ detailTranslation?.instructions }}</p> }<dl><div><dt>Categoría</dt><dd>{{ exercise.category || '—' }}</dd></div><div><dt>Equipamiento</dt><dd>{{ exercise.equipment || '—' }}</dd></div><div><dt>Grupo muscular</dt><dd>{{ exercise.muscleGroup || '—' }}</dd></div><div><dt>Músculo objetivo</dt><dd>{{ exercise.targetMuscle || '—' }}</dd></div></dl>@if (exercise.secondaryMuscles?.length) { <p class="detail-secondary">Secundarios: {{ exercise.secondaryMuscles?.join(', ') }}</p> }<footer>@if (canEdit(exercise)) { <button type="button" (click)="openEdit(exercise)">Editar ejercicio</button> }@if (canDelete(exercise)) { <button type="button" (click)="delete(exercise)" [disabled]="saving()">Eliminar</button> }</footer></section> }
     } @else if (view() === 'form') {

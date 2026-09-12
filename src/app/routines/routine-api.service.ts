@@ -1,4 +1,4 @@
-import { HttpClient, HttpParams } from '@angular/common/http';
+import { HttpClient, HttpContext, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { environment } from '../../environments/environment';
@@ -10,6 +10,7 @@ import {
   RoutineResponse,
   UpdateRoutineRequest,
 } from './routine-api.models';
+import { RETRY_SAFE_REQUEST } from '../services/resilient-http.interceptor';
 
 @Injectable({ providedIn: 'root' })
 export class RoutineApiService {
@@ -29,7 +30,7 @@ export class RoutineApiService {
   }
 
   create(request: CreateRoutineRequest): Observable<RoutineResponse> {
-    return this.http.post<RoutineResponse>(this.routinesUrl, request);
+    return this.http.post<RoutineResponse>(this.routinesUrl, request, { context: new HttpContext().set(RETRY_SAFE_REQUEST, true) });
   }
 
   update(id: RoutineId, request: UpdateRoutineRequest): Observable<RoutineResponse> {
