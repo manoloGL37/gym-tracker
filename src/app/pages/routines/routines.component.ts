@@ -7,7 +7,7 @@ import { AuthSessionService } from '../../auth/auth-session.service';
 import { RoutinesRepository, Routine } from '../../data/active-training.repository';
 import { ExerciseApiService } from '../../exercises/exercise-api.service';
 import { ExercisePageResponse, ExerciseResponse } from '../../exercises/exercise-api.models';
-import { getExerciseName } from '../../exercises/exercise-domain';
+import { createCustomExerciseDraft, getExerciseName, isCustomExerciseDraftValid, toCreateExerciseRequest } from '../../exercises/exercise-domain';
 import { RoutineApiService } from '../../routines/routine-api.service';
 import { RoutineResponse } from '../../routines/routine-api.models';
 import { CloudRoutineDraft, cloudDraftFromResponse, cloudExerciseDraft, newCloudRoutineDraft, RoutineListItem, toCreateRoutineRequest } from '../../routines/routine-domain';
@@ -46,6 +46,7 @@ export class RoutinesComponent {
   selectorPage = signal<ExercisePageResponse | null>(null);
   selectorSearch = '';
   selectorPageNumber = 0;
+  selectorCreateSaving = false;
 
   constructor() {
     effect(() => {
@@ -205,13 +206,41 @@ export class RoutinesComponent {
     }
   }
   selectCloudExercise(exercise: ExerciseResponse): void { this.cloudDraft.exercises.push(cloudExerciseDraft(exercise, this.t.lang())); this.closeSelector(); }
+  get canCreateSelectorExercise(): boolean {
+    const name = this.normalizedSelectorName();
+    return Boolean(name) && !(this.selectorPage()?.content ?? []).some(exercise => this.normalizeExerciseName(this.exerciseName(exercise)) === name);
+  }
+
+  async createSelectorExercise(): Promise<void> {
+    if (!this.canCreateSelectorExercise || this.selectorCreateSaving) return;
+    const draft = createCustomExerciseDraft(this.t.lang());
+    draft.name = this.selectorSearch.trim().replace(/\s+/g, ' ');
+    if (!isCustomExerciseDraftValid(draft)) {
+      this.selectorError.set('Revisa el nombre del ejercicio antes de crearlo.');
+      return;
+    }
+    this.selectorCreateSaving = true;
+    this.selectorError.set(null);
+    try {
+      const exercise = await firstValueFrom(this.exerciseApi.create(toCreateExerciseRequest(draft)));
+      this.selectCloudExercise(exercise);
+    } catch (error) {
+      // Keep the search text and routine draft intact so the deliberate creation can be retried.
+      this.selectorError.set(exerciseCreationErrorMessage(error));
+    } finally {
+      this.selectorCreateSaving = false;
+    }
+  }
   removeCloudExercise(index: number): void { this.cloudDraft.exercises.splice(index, 1); }
-  closeSelector(): void { this.selectorOpen = false; this.selectorError.set(null); }
+  closeSelector(): void { this.selectorOpen = false; this.selectorError.set(null); this.selectorCreateSaving = false; }
   async previousCloudPage(): Promise<void> { if (this.cloudPageNumber > 0) await this.loadRoutines(this.cloudPageNumber - 1); }
   async nextCloudPage(): Promise<void> { if (this.cloudPageNumber + 1 < this.cloudTotalPages) await this.loadRoutines(this.cloudPageNumber + 1); }
   async previousSelectorPage(): Promise<void> { if (this.selectorPageNumber > 0) await this.loadSelectorPage(this.selectorPageNumber - 1); }
   async nextSelectorPage(): Promise<void> { const page = this.selectorPage(); if (page && this.selectorPageNumber + 1 < page.totalPages) await this.loadSelectorPage(this.selectorPageNumber + 1); }
   exerciseName(exercise: ExerciseResponse): string { return getExerciseName(exercise, this.t.lang()); }
+
+  private normalizedSelectorName(): string { return this.normalizeExerciseName(this.selectorSearch); }
+  private normalizeExerciseName(value: string): string { return value.trim().replace(/\s+/g, ' ').toLocaleLowerCase(); }
 
   private moveExercise<T>(items: T[], index: number, direction: -1 | 1): void {
     const destination = index + direction;
@@ -245,4 +274,11 @@ function routineErrorMessage(error: unknown): string {
   if (error.status === 404) return 'La rutina o alguno de sus ejercicios ya no está disponible.';
   if (error.status === 400) return 'No se pudieron guardar los datos de la rutina. Revisa los campos.';
   return 'No se pudo completar la operación.';
+}
+
+function exerciseCreationErrorMessage(error: unknown): string {
+  if (!(error instanceof HttpErrorResponse) || error.status === 0 || error.status >= 500) return 'No se pudo crear el ejercicio. Conservamos tu búsqueda para que puedas reintentar.';
+  if (error.status === 401) return 'La sesión ha caducado. Inicia sesión de nuevo para crear un ejercicio personalizado.';
+  if (error.status === 400) return 'No se pudo crear el ejercicio. Revisa el nombre e inténtalo de nuevo.';
+  return 'No se pudo crear el ejercicio. Puedes reintentar.';
 }

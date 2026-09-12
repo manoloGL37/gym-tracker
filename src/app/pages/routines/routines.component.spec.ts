@@ -5,6 +5,7 @@ import { of, throwError } from 'rxjs';
 import { AuthSessionService } from '../../auth/auth-session.service';
 import { Routine, RoutinesRepository } from '../../data/active-training.repository';
 import { ExerciseApiService } from '../../exercises/exercise-api.service';
+import { ExerciseResponse } from '../../exercises/exercise-api.models';
 import { RoutineApiService } from '../../routines/routine-api.service';
 import { RoutinePageResponse, RoutineResponse } from '../../routines/routine-api.models';
 import { TranslationService } from '../../services/translation.service';
@@ -14,6 +15,7 @@ import { RoutinesComponent } from './routines.component';
 const local: Routine = { id: 'local-id', name: 'Fuerza', exercises: [{ id: 'local-exercise', name: 'Press', setsCount: 3 }] };
 const cloud: RoutineResponse = { id: 'cloud-id', clientId: 'stable-client-id', name: 'Movilidad', description: null, exercises: [], createdAt: '2026-01-01T10:00:00', updatedAt: '2026-01-01T10:00:00' };
 const page: RoutinePageResponse = { content: [{ id: cloud.id, clientId: cloud.clientId, name: cloud.name, description: cloud.description, createdAt: cloud.createdAt, updatedAt: cloud.updatedAt }], totalElements: 1, totalPages: 1, size: 10, number: 0, sort: { empty: false, sorted: true, unsorted: false }, pageable: { offset: 0, sort: { empty: false, sorted: true, unsorted: false }, pageNumber: 0, pageSize: 10, paged: true, unpaged: false }, first: true, last: true, numberOfElements: 1, empty: false };
+const customExercise: ExerciseResponse = { id: 'custom-id', clientId: 'exercise-client-id', source: 'USER', sourceId: null, editable: true, deletable: true, category: null, equipment: null, targetMuscle: null, muscleGroup: null, secondaryMuscles: null, translations: [{ language: 'en', name: 'Press unilateral en máquina', instructions: null }], aliases: [] };
 
 describe('RoutinesComponent local/cloud boundary', () => {
   let fixture: ComponentFixture<RoutinesComponent>;
@@ -26,8 +28,9 @@ describe('RoutinesComponent local/cloud boundary', () => {
     authenticated = signal(isAuthenticated);
     routineApi = jasmine.createSpyObj<RoutineApiService>('RoutineApiService', ['list', 'get', 'create', 'update', 'delete']);
     routineApi.list.and.returnValue(of(page));
-    exerciseApi = jasmine.createSpyObj<ExerciseApiService>('ExerciseApiService', ['list', 'get']);
+    exerciseApi = jasmine.createSpyObj<ExerciseApiService>('ExerciseApiService', ['list', 'get', 'create']);
     exerciseApi.list.and.returnValue(of({ content: [], page: 0, size: 10, totalElements: 0, totalPages: 0 }));
+    exerciseApi.create.and.returnValue(of(customExercise));
     spyOn(RoutinesRepository, 'getAll').and.resolveTo([local]);
     await TestBed.configureTestingModule({
       imports: [RoutinesComponent],
@@ -95,5 +98,51 @@ describe('RoutinesComponent local/cloud boundary', () => {
     component.moveLocalExercise(0, 1);
     component.moveLocalExercise(0, -1);
     expect(component.localExercises.map(exercise => exercise.id)).toEqual(['second', 'first']);
+  });
+
+  it('selects an existing catalog exercise without creating one', async () => {
+    await create(true);
+    const catalogExercise = { ...customExercise, id: 'catalog-id', source: 'EXERCISES_DATASET' as const };
+    component.selectorPage.set({ content: [catalogExercise], page: 0, size: 10, totalElements: 1, totalPages: 1 });
+    component.selectCloudExercise(catalogExercise);
+    expect(component.cloudDraft.exercises.map(exercise => exercise.exerciseId)).toEqual(['catalog-id']);
+    expect(exerciseApi.create).not.toHaveBeenCalled();
+  });
+
+  it('offers deliberate inline creation for a missing normalized name and adds the created exercise', async () => {
+    await create(true);
+    component.cloudDraft.exercises.push({ exerciseId: 'kept-id', exerciseName: 'Sentadilla', exerciseSource: 'EXERCISES_DATASET', sets: 3, targetReps: 10, restSeconds: 90, notes: '' });
+    component.selectorSearch = '  Press   unilateral en máquina  ';
+    component.selectorPage.set({ content: [], page: 0, size: 10, totalElements: 0, totalPages: 0 });
+    expect(component.canCreateSelectorExercise).toBeTrue();
+    await component.createSelectorExercise();
+    expect(exerciseApi.create.calls.count()).toBe(1);
+    expect(exerciseApi.create.calls.argsFor(0)[0].translations[0].name).toBe('Press unilateral en máquina');
+    expect(component.cloudDraft.exercises.map(exercise => exercise.exerciseId)).toEqual(['kept-id', 'custom-id']);
+    expect(component.selectorOpen).toBeFalse();
+  });
+
+  it('does not offer creation when an exact normalized result already exists', async () => {
+    await create(true);
+    component.selectorSearch = ' press   unilateral EN máquina ';
+    component.selectorPage.set({ content: [customExercise], page: 0, size: 10, totalElements: 1, totalPages: 1 });
+    expect(component.canCreateSelectorExercise).toBeFalse();
+    await component.createSelectorExercise();
+    expect(exerciseApi.create).not.toHaveBeenCalled();
+  });
+
+  it('keeps the routine draft and search text when inline creation fails so it can be retried', async () => {
+    await create(true);
+    component.cloudDraft.name = 'Torso';
+    component.cloudDraft.exercises.push({ exerciseId: 'kept-id', exerciseName: 'Remo', exerciseSource: 'EXERCISES_DATASET', sets: 3, targetReps: 10, restSeconds: 90, notes: '' });
+    component.selectorSearch = 'Press nuevo';
+    component.selectorOpen = true;
+    exerciseApi.create.and.returnValue(throwError(() => new HttpErrorResponse({ status: 0 })));
+    await component.createSelectorExercise();
+    expect(component.selectorOpen).toBeTrue();
+    expect(component.selectorSearch).toBe('Press nuevo');
+    expect(component.cloudDraft.name).toBe('Torso');
+    expect(component.cloudDraft.exercises.map(exercise => exercise.exerciseId)).toEqual(['kept-id']);
+    expect(component.selectorError()).toContain('reintentar');
   });
 });

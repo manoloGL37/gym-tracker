@@ -20,6 +20,7 @@ import {
   CustomExerciseDraft,
   getExerciseName,
   getExerciseTranslation,
+  isCustomExerciseDraftValid,
   toCreateExerciseRequest,
 } from '../../exercises/exercise-domain';
 
@@ -192,7 +193,7 @@ export class ExerciseCatalogComponent {
   }
 
   async save(): Promise<void> {
-    if (!this.isDraftValid()) {
+    if (!isCustomExerciseDraftValid(this.draft)) {
       this.error.set('Revisa los campos obligatorios y sus límites de longitud.');
       return;
     }
@@ -263,14 +264,6 @@ export class ExerciseCatalogComponent {
     }
   }
 
-  private isDraftValid(): boolean {
-    return Boolean(this.draft.name.trim())
-      && Boolean(this.draft.language.trim())
-      && this.draft.name.trim().length <= 255
-      && this.draft.language.trim().length <= 10
-      && [this.draft.category, this.draft.equipment, this.draft.targetMuscle, this.draft.muscleGroup]
-        .every(value => value.trim().length <= 100);
-  }
 }
 
 function exerciseErrorMessage(error: unknown): string {
