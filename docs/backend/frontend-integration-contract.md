@@ -11,7 +11,7 @@ This document is derived from the current Spring MVC controllers, DTO records, B
 
 Application endpoints use `/api`. Swagger UI is `/swagger-ui/index.html`; OpenAPI JSON is `/v3/api-docs`.
 
-`APP_CORS_ALLOWED_ORIGINS` is a comma-separated list of exact origins (no path or trailing slash). Its default is `http://localhost:4200,https://gym-tracker-eight-dun.vercel.app`. CORS permits `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, and `OPTIONS`, with `Authorization`, `Content-Type`, `Accept`, and `Origin` headers. It enables credentials and never uses a wildcard origin.
+`APP_CORS_ALLOWED_ORIGINS` is a comma-separated list of exact origins (no path or trailing slash). Its local default is `http://localhost:4200,https://gym-tracker-eight-dun.vercel.app`; under the `prod` profile the default is only `https://gym-tracker-eight-dun.vercel.app`. CORS permits `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, and `OPTIONS`, with `Authorization`, `Content-Type`, `Accept`, and `Origin` headers. It enables credentials and rejects configuration containing a wildcard origin. Vercel preview deployments have distinct origins and are not allowed by the production default; explicitly enumerate trusted preview origins or use a stable custom preview domain.
 
 UUIDs are JSON strings. Java `BigDecimal` values are JSON numbers. Java `LocalDate` is JSON `YYYY-MM-DD`; Java `LocalDateTime` is an ISO-8601 local date-time such as `2026-09-10T14:30:00`, with no offset or timezone suffix.
 
@@ -57,7 +57,7 @@ Success response (`AuthResponse`) remains exactly:
 
 There is no `tokenType`, expiry field, refresh token, or user object in the JSON response. The JWT contains subject=user UUID, issued-at, and expiration claims; its default lifetime is 3,600,000 ms (1 hour). Login also creates a server-side refresh session and sends `Set-Cookie` for `refreshToken`. The raw refresh token is never returned in JSON and PostgreSQL stores only its SHA-256 hash.
 
-The refresh cookie is host-only (no `Domain`), `HttpOnly`, has `Path=/api/auth`, and has a maximum lifetime matching the refresh session (default 2,592,000,000 ms / 30 days from login). Production must configure `Secure=true` and `SameSite=None` because the Angular and API deployments are cross-site. Local HTTP development defaults to `Secure=false` and `SameSite=Lax`. Browsers or privacy modes that block third-party cookies can still block the current Vercel-to-Render cookie; for maximum compatibility, deploy frontend and API on same-site custom domains or proxy `/api` through the frontend origin.
+The refresh cookie is host-only (no `Domain`), `HttpOnly`, has `Path=/api/auth`, and has a maximum lifetime matching the refresh session (default 2,592,000,000 ms / 30 days from login). Login, refresh, invalid-refresh cleanup, and logout use the same name, path, host-only scope, `Secure`, and `SameSite` settings; deletion sends an empty value with `Max-Age=0`. The `prod` profile defaults to `Secure=true` and `SameSite=None` because `vercel.app` and `onrender.com` are cross-site. Local HTTP development keeps `Secure=false` and `SameSite=Lax`. `SameSite=None` without `Secure` is rejected at application startup. Browsers or privacy modes that block third-party cookies can still block the current Vercel-to-Render cookie; for maximum compatibility, deploy frontend and API on same-site custom domains or proxy `/api` through the frontend origin.
 
 Invalid payload is `400 VALIDATION_ERROR`. Unknown email or wrong password is `401` with `{ status: 401, code: "INVALID_CREDENTIALS", message, timestamp }`.
 
@@ -69,7 +69,9 @@ Invalid payload is `400 VALIDATION_ERROR`. Unknown email or wrong password is `4
 { "accessToken": "<new signed JWT>" }
 ```
 
-Every successful refresh rotates the cookie. The 30-day expiry is absolute from login and does not slide on each refresh. The old token is immediately revoked. Missing, unknown, expired, revoked, or reused tokens return `401` with code `INVALID_REFRESH_TOKEN` and clear the cookie. Reuse of a rotated token revokes every still-active token in that refresh family, including the newer token, so Angular must discard local authentication and require login. Concurrent refresh requests must be coalesced client-side: only one refresh request should be in flight.
+Every successful refresh rotates the cookie. The 30-day expiry is absolute from login and does not slide on each refresh. The old token is immediately revoked. To prevent two near-simultaneous session-restoration calls from revoking each other, a rotated token has a 10-second concurrency grace window while its family still has an active successor. A request in that window receives its own valid successor cookie; no raw token is persisted. Reuse after the grace window revokes every still-active token in the family. The frontend should still coalesce refresh calls so only one is normally in flight.
+
+Missing, unknown, expired, revoked/reused outside the grace window, or logged-out tokens return `401` with code `INVALID_REFRESH_TOKEN` and clear the cookie. Unexpected database or server failures are not converted to `401`; they remain `5xx`, so the frontend must treat them as temporary failures rather than deleting authenticated state.
 
 ### Logout
 
@@ -83,6 +85,12 @@ Every successful refresh rotates the cookie. The 30-day expiry is absolute from 
 4. Do not read, copy, persist, or include a refresh token in JavaScript or a request body; it is HttpOnly and browser-managed.
 5. If refresh returns `401`, clear client auth state and navigate to login. Do not retry refresh recursively.
 6. On logout, call `POST /api/auth/logout` with credentials, clear the access token regardless of the response, and navigate to login.
+
+Spring Security is stateless and CSRF token handling is disabled. The refresh cookie is therefore protected at the browser boundary by the exact-origin credentialed CORS policy and POST-only auth endpoints. Do not add untrusted origins to `APP_CORS_ALLOWED_ORIGINS`.
+
+### Required Render production configuration
+
+Set `SPRING_PROFILES_ACTIVE=prod`. The resulting production cookie defaults are `REFRESH_COOKIE_SECURE=true` and `REFRESH_COOKIE_SAME_SITE=None`; setting either variable explicitly is supported, but `None` with `false` is rejected. Set `APP_CORS_ALLOWED_ORIGINS=https://gym-tracker-eight-dun.vercel.app` for the current production frontend. Keep `REFRESH_COOKIE_NAME=refreshToken` unless backend and OpenAPI/frontend expectations are intentionally migrated together. `JWT_SECRET` and the production datasource variables remain required; token lifetime variables are optional and retain the documented defaults.
 
 ### Protected requests
 
