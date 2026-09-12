@@ -182,6 +182,61 @@ describe('StatsComponent', () => {
     expect(api.evolution).toHaveBeenCalledWith({ from: '2026-09-01', to: '2026-09-30' });
   });
 
+  it('commits only the latest period response when a slower earlier request finishes last', async () => {
+    await create(true);
+    const comparisons: Array<(value: ReturnType<typeof comparisonResponse>) => void> = [];
+    const evolutions: Array<(value: ReturnType<typeof evolutionResponse>) => void> = [];
+    api.comparison.and.callFake(() => new Observable(observer => { comparisons.push(value => { observer.next(value); observer.complete(); }); }));
+    api.evolution.and.callFake(() => new Observable(observer => { evolutions.push(value => { observer.next(value); observer.complete(); }); }));
+
+    const month = component.setPeriod('month');
+    const week = component.setPeriod('week');
+    expect(api.comparison.calls.count()).toBe(3);
+
+    comparisons[1](comparisonResponse(7, 700));
+    evolutions[1](evolutionResponse(7, 700));
+    await week;
+    expect(component.currentStats().workoutCount).toBe(7);
+    expect(component.confirmedPeriod()).toBe('week');
+
+    comparisons[0](comparisonResponse(31, 3100));
+    evolutions[0](evolutionResponse(31, 3100));
+    await month;
+    expect(component.currentStats().workoutCount).toBe(7);
+    expect(component.evolutionChartData().datasets[0].data).toEqual([700]);
+  });
+
+  it('captures the applied week interval, even if form controls change before selecting an exercise', async () => {
+    await create(true);
+    component.weekFrom = '2026-W36';
+    component.weekTo = '2026-W37';
+    await component.applyWeeklyRange();
+    component.weekFrom = '2026-W38';
+    component.weekTo = '2026-W38';
+    await component.searchExercises();
+    await component.selectExercise(exerciseId);
+    expect(api.exercise).toHaveBeenCalledWith(exerciseId, { from: '2026-08-31', to: '2026-09-13' });
+  });
+
+  it('does not let an older exercise response replace the last selected exercise', async () => {
+    await create(true);
+    const secondExerciseId = 'e22e2222-2222-4222-8222-222222222222';
+    component.exerciseResults.set([catalogExercise, { ...catalogExercise, id: secondExerciseId }]);
+    const responses: Array<(value: ReturnType<typeof exerciseResponse>) => void> = [];
+    api.exercise.and.callFake(() => new Observable(observer => { responses.push(value => { observer.next(value); observer.complete(); }); }));
+
+    const first = component.selectExercise(exerciseId);
+    const second = component.selectExercise(secondExerciseId);
+    responses[1](exerciseResponse(secondExerciseId, 2200));
+    await second;
+    responses[0](exerciseResponse(exerciseId, 1100));
+    await first;
+
+    expect(component.selectedExerciseId).toBe(secondExerciseId);
+    expect(component.exerciseStats()?.exerciseId).toBe(secondExerciseId);
+    expect(component.exerciseChartData().datasets[0].data).toEqual([2200]);
+  });
+
   it('treats successful zero aggregates as empty data, not an error', async () => {
     await create(true);
     api.comparison.and.returnValue(of({
@@ -270,4 +325,33 @@ describe('StatsComponent', () => {
 
 function summary(workouts: number, volume: number, sets = 0, reps = 0) {
   return { from: '2026-09-07', to: '2026-09-13', workouts, sets, reps, volume, maxWeight: 0 };
+}
+
+function comparisonResponse(workouts: number, volume: number) {
+  return {
+    current: summary(workouts, volume),
+    previous: summary(0, 0),
+    changes: { workouts: 0, sets: 0, reps: 0, volume: 0, maxWeight: 0 },
+  };
+}
+
+function evolutionResponse(workouts: number, volume: number) {
+  return {
+    from: '2026-09-07',
+    to: '2026-09-13',
+    data: [{ date: '2026-09-08', workouts, sets: 1, reps: 1, volume, maxWeight: volume }],
+  };
+}
+
+function exerciseResponse(id: string, volume: number) {
+  return {
+    exerciseId: id,
+    from: '2026-07-20',
+    to: '2026-09-13',
+    totalSets: 1,
+    totalReps: 1,
+    totalVolume: volume,
+    maxWeight: volume,
+    evolution: [{ date: '2026-09-08', volume, maxWeight: volume }],
+  };
 }
