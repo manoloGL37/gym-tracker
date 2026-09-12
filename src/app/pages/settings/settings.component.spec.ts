@@ -11,7 +11,7 @@ import { SettingsComponent } from './settings.component';
 describe('SettingsComponent account data status', () => {
   let fixture: ComponentFixture<SettingsComponent>;
   let migration: jasmine.SpyObj<LocalToCloudMigrationService>;
-  const status = signal<'synced' | 'attention'>('synced');
+  const status = signal<'synced' | 'attention' | 'syncing'>('synced');
   const attention = signal(0);
 
   beforeEach(async () => {
@@ -62,5 +62,14 @@ describe('SettingsComponent account data status', () => {
     const text = fixture.nativeElement.textContent as string;
     expect(text).toContain('1 elemento necesita tu atención');
     expect(text).toContain('Necesitamos identificar estos ejercicios');
+  });
+
+  it('renders real synchronization progress immediately', async () => {
+    status.set('syncing');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('Sincronizando ejercicios · 3/3');
+    expect(fixture.nativeElement.querySelector('.syncing')).not.toBeNull();
   });
 });

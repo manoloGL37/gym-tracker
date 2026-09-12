@@ -40,6 +40,21 @@ describe('AccountSyncService', () => {
     expect(service.status()).toBe('synced');
   });
 
+  it('shows existing progress immediately while exercise synchronization is running', async () => {
+    let release!: () => void;
+    migration.getProgress.and.resolveTo({ completed: 1, total: 3, pending: 2, attention: 0 });
+    migration.start.and.returnValue(new Promise<void>(resolve => release = resolve) as any);
+
+    service.start('account-a');
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(service.status()).toBe('syncing');
+    expect(service.completed()).toBe(1);
+    expect(service.total()).toBe(3);
+    release();
+  });
+
   it('keeps a temporary failure pending and retries with bounded backoff', async () => {
     migration.start.and.rejectWith(new Error('offline'));
     service.start('account-a');

@@ -67,6 +67,13 @@ export class AccountSyncService implements OnDestroy {
   private async synchronize(accountId: string | null, runId: number): Promise<void> {
     if (!accountId) return;
     try {
+      // Show real pending work as soon as it is available without delaying the sync POSTs.
+      void this.migration.getProgress(accountId).then(initial => {
+        if (runId !== this.runId || accountId !== this.accountId || this.status() !== 'syncing') return;
+        this.completed.set(initial.completed);
+        this.total.set(initial.total);
+        this.attention.set(initial.attention);
+      }).catch(() => undefined);
       await this.migration.start(accountId);
       const progress = await this.migration.getProgress(accountId);
       if (runId !== this.runId || accountId !== this.accountId) return;
