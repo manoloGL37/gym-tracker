@@ -3,7 +3,7 @@
   <main>
     <section class="settings-section account-section"><header><span>01</span><div><h2>Cuenta</h2><p>Identidad, acceso y catálogo personal.</p></div></header><div class="settings-section__body">
       @if (auth.isAuthenticated()) { <div class="account-line"><div><strong>{{ auth.currentUser()?.email }}</strong><span>Cuenta activa</span></div><i aria-label="Sesión activa"></i></div><a routerLink="/exercise-catalog">Abrir catálogo de ejercicios <span aria-hidden="true">→</span></a><button type="button" class="quiet-action" (click)="logout()">Cerrar sesión</button> }
-      @else if (auth.isInitializing()) { <p aria-live="polite">Comprobando la sesión…</p> }
+      @else if (auth.isReconnecting()) { <div class="account-line account-line--pending" aria-live="polite"><div><strong>{{ auth.currentUser()?.email || 'Tu cuenta' }}</strong><span>Reconectando tu cuenta…</span></div><i aria-label="Sincronización pendiente"></i></div><p>La aplicación y tus datos locales siguen disponibles mientras vuelve la conexión.</p> }
       @else { <p>Puedes usar la aplicación sin cuenta. Inicia sesión para mantener tus datos disponibles al volver.</p><div class="account-actions"><a routerLink="/login">Iniciar sesión</a><a routerLink="/register">Crear cuenta</a></div> }
     </div></section>
 

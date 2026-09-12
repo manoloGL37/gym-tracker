@@ -1,4 +1,4 @@
-import { AfterViewInit, ChangeDetectionStrategy, ChangeDetectorRef, Component, ElementRef, inject, NgZone, OnDestroy, OnInit, ViewChild } from '@angular/core';
+import { AfterViewInit, ChangeDetectionStrategy, ChangeDetectorRef, Component, effect, ElementRef, inject, NgZone, OnDestroy, OnInit, ViewChild } from '@angular/core';
 import { Router } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
@@ -45,7 +45,13 @@ export class TrainingComponent implements OnInit, AfterViewInit, OnDestroy {
   private localBenchmarks: BenchmarkIndex = new Map();
   private cloudBenchmarks: BenchmarkIndex = new Map();
 
-  constructor(private router: Router) {}
+  constructor(private router: Router) {
+    effect(() => {
+      if (!this.auth.isAuthenticated() || this.loading) return;
+      if (this.cloudTraining) void this.refreshCloudTraining(this.cloudTraining);
+      else if (!this.training) void this.retryCloudStart();
+    });
+  }
 
   async ngOnInit() {
     this.startClock();

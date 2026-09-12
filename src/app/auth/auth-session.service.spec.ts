@@ -34,13 +34,13 @@ describe('AuthSessionService', () => {
     service = TestBed.inject(AuthSessionService);
   });
 
-  it('starts in checking state before restoration completes', () => {
+  it('starts in restoring state before restoration completes', () => {
     const response = new Subject<AuthResponse>();
     api.refresh.and.returnValue(response);
 
     void service.initialize();
 
-    expect(service.initializationStatus()).toBe('checking');
+    expect(service.initializationStatus()).toBe('restoring');
     expect(service.isAuthenticated()).toBeFalse();
     expect(service.isGuest()).toBeFalse();
   });
@@ -68,7 +68,7 @@ describe('AuthSessionService', () => {
 
     expect(service.isGuest()).toBeTrue();
     expect(service.accessToken()).toBeNull();
-    expect(service.initializationStatus()).toBe('unauthenticated');
+    expect(service.initializationStatus()).toBe('guest');
     expect(localStorage.getItem('guest-data-check')).toBe('keep');
   });
 
@@ -78,7 +78,7 @@ describe('AuthSessionService', () => {
 
     await service.initialize();
 
-    expect(service.initializationStatus()).toBe('checking');
+    expect(service.initializationStatus()).toBe('unreachable');
     expect(service.isGuest()).toBeFalse();
     expect(service.restoreAttemptFailed()).toBeTrue();
     expect(localStorage.getItem('guest-data-check')).toBe('keep');
@@ -89,9 +89,24 @@ describe('AuthSessionService', () => {
 
     await service.initialize();
 
-    expect(service.initializationStatus()).toBe('checking');
+    expect(service.initializationStatus()).toBe('unreachable');
     expect(service.isGuest()).toBeFalse();
     expect(service.restoreAttemptFailed()).toBeTrue();
+  });
+
+  it('restores in the background on connectivity recovery and resumes sync', async () => {
+    api.refresh.and.returnValue(throwError(() => new HttpErrorResponse({ status: 503 })));
+    await service.initialize();
+    expect(service.initializationStatus()).toBe('unreachable');
+
+    api.refresh.and.returnValue(of({ accessToken: 'delayed-token' }));
+    api.getCurrentUser.and.returnValue(of(user));
+    window.dispatchEvent(new Event('online'));
+    await new Promise(resolve => setTimeout(resolve, 0));
+
+    expect(service.initializationStatus()).toBe('authenticated');
+    expect(service.accessToken()).toBe('delayed-token');
+    expect(accountSync.start).toHaveBeenCalledWith(user.id);
   });
 
   it('establishes a usable in-memory session on login', async () => {
@@ -104,6 +119,7 @@ describe('AuthSessionService', () => {
     expect(service.currentUser()).toEqual(user);
     expect(service.initializationStatus()).toBe('authenticated');
     expect(localStorage.getItem('gym-tracker:auth:access-token')).toBeNull();
+    expect(localStorage.getItem('gym-tracker:auth:session-expected')).toBe('true');
     expect(accountSync.start).toHaveBeenCalledOnceWith(user.id);
   });
 
@@ -132,10 +148,13 @@ describe('AuthSessionService', () => {
 
     expect(service.accessToken()).toBe('expired-token');
     expect(service.currentUser()).toEqual(user);
+    expect(service.initializationStatus()).toBe('unreachable');
   });
 
   it('calls backend logout and removes only authentication state', async () => {
     localStorage.setItem('guest-data-check', 'keep');
+    localStorage.setItem('gym-tracker:auth:session-expected', 'true');
+    localStorage.setItem('gym-tracker:auth:cached-user', JSON.stringify(user));
     service.accessToken.set('token');
     service.currentUser.set(user);
     api.logout.and.returnValue(of(undefined));
@@ -145,8 +164,10 @@ describe('AuthSessionService', () => {
     expect(api.logout).toHaveBeenCalledOnceWith();
     expect(service.accessToken()).toBeNull();
     expect(service.isGuest()).toBeTrue();
-    expect(service.initializationStatus()).toBe('unauthenticated');
+    expect(service.initializationStatus()).toBe('guest');
     expect(localStorage.getItem('guest-data-check')).toBe('keep');
+    expect(localStorage.getItem('gym-tracker:auth:session-expected')).toBeNull();
+    expect(localStorage.getItem('gym-tracker:auth:cached-user')).toBeNull();
     expect(accountSync.stop).toHaveBeenCalled();
   });
 
@@ -161,7 +182,7 @@ describe('AuthSessionService', () => {
     await service.initialize();
 
     expect(api.refresh).not.toHaveBeenCalled();
-    expect(service.initializationStatus()).toBe('unauthenticated');
+    expect(service.initializationStatus()).toBe('guest');
   });
 
   it('ignores an in-flight restoration that completes after logout', async () => {
@@ -176,8 +197,43 @@ describe('AuthSessionService', () => {
     await initialization;
 
     expect(service.accessToken()).toBeNull();
-    expect(service.initializationStatus()).toBe('unauthenticated');
+    expect(service.initializationStatus()).toBe('guest');
     expect(api.getCurrentUser).not.toHaveBeenCalled();
+  });
+
+  it('does not let a stale failed restoration overwrite a successful login', async () => {
+    const staleRefresh = new Subject<AuthResponse>();
+    api.refresh.and.returnValue(staleRefresh);
+    const initialization = service.initialize();
+
+    api.login.and.returnValue(of({ accessToken: 'login-token' }));
+    api.getCurrentUser.and.returnValue(of(user));
+    await service.login({ email: user.email, password: 'password123' });
+
+    staleRefresh.error(new HttpErrorResponse({ status: 401 }));
+    await initialization;
+
+    expect(service.initializationStatus()).toBe('authenticated');
+    expect(service.accessToken()).toBe('login-token');
+    expect(service.currentUser()).toEqual(user);
+  });
+
+  it('uses cached profile metadata only as reconnecting UI continuity after reload', () => {
+    service.ngOnDestroy();
+    TestBed.resetTestingModule();
+    localStorage.setItem('gym-tracker:auth:session-expected', 'true');
+    localStorage.setItem('gym-tracker:auth:cached-user', JSON.stringify(user));
+    TestBed.configureTestingModule({ providers: [
+      AuthSessionService,
+      { provide: AuthApiService, useValue: api },
+      { provide: AccountSyncService, useValue: accountSync },
+    ] });
+
+    const restored = TestBed.inject(AuthSessionService);
+
+    expect(restored.initializationStatus()).toBe('restoring');
+    expect(restored.isAuthenticated()).toBeFalse();
+    expect(restored.currentUser()).toEqual(user);
   });
 
   it('leaves guest Dexie data untouched on logout', async () => {

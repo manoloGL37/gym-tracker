@@ -38,4 +38,4 @@ export type BackendErrorResponse = ValidationErrorResponse | ApiErrorResponse;
 
 export type PersistenceMode = 'local' | 'cloud';
 export type ResourcePersistenceMode = 'local';
-export type AuthInitializationStatus = 'checking' | 'authenticated' | 'unauthenticated';
+export type AuthInitializationStatus = 'restoring' | 'authenticated' | 'guest' | 'unreachable';
