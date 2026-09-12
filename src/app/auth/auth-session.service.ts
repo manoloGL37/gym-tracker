@@ -14,18 +14,21 @@ import {
 
 @Injectable({ providedIn: 'root' })
 export class AuthSessionService {
+  private static readonly explicitLogoutKey = 'gym-tracker:auth:explicit-logout';
   private readonly api = inject(AuthApiService);
   private readonly injector = inject(Injector);
   private get accountSync(): AccountSyncService { return this.injector.get(AccountSyncService); }
   private initializationPromise: Promise<void> | null = null;
-  private refreshPromise: Promise<string> | null = null;
+  private refreshRequest: { epoch: number; promise: Promise<string> } | null = null;
+  private sessionEpoch = 0;
 
   readonly accessToken = signal<string | null>(null);
   readonly currentUser = signal<UserResponse | null>(null);
-  readonly initializationStatus = signal<AuthInitializationStatus>('idle');
+  readonly initializationStatus = signal<AuthInitializationStatus>('checking');
+  readonly restoreAttemptFailed = signal(false);
 
-  readonly isAuthenticated = computed(() => this.currentUser() !== null);
-  readonly isGuest = computed(() => !this.isAuthenticated());
+  readonly isAuthenticated = computed(() => this.initializationStatus() === 'authenticated');
+  readonly isGuest = computed(() => this.initializationStatus() === 'unauthenticated');
   readonly isInitializing = computed(() => this.initializationStatus() === 'checking');
   readonly persistenceMode = computed<PersistenceMode>(() => this.isAuthenticated() ? 'cloud' : 'local');
   // Resource repositories remain Dexie-backed in Phase 1, even for cloud-capable accounts.
@@ -37,11 +40,17 @@ export class AuthSessionService {
   }
 
   initialize(): Promise<void> {
+    if (this.wasExplicitlyLoggedOut()) {
+      this.clearAuthState();
+      return Promise.resolve();
+    }
+
     if (this.initializationPromise) {
       return this.initializationPromise;
     }
 
-    this.initializationPromise = this.restoreSession().finally(() => {
+    const epoch = this.sessionEpoch;
+    this.initializationPromise = this.restoreSession(epoch).finally(() => {
       this.initializationPromise = null;
     });
     return this.initializationPromise;
@@ -56,23 +65,31 @@ export class AuthSessionService {
   }
 
   async login(request: LoginRequest): Promise<void> {
+    const epoch = ++this.sessionEpoch;
     const response = await firstValueFrom(this.api.login(request));
+    if (epoch !== this.sessionEpoch) return;
+
+    this.clearExplicitLogout();
     this.currentUser.set(null);
     this.setAccessToken(response.accessToken);
     this.initializationStatus.set('checking');
+    this.restoreAttemptFailed.set(false);
 
     try {
       const user = await firstValueFrom(this.api.getCurrentUser());
+      if (epoch !== this.sessionEpoch) return;
       this.currentUser.set(user);
-      this.initializationStatus.set('ready');
+      this.initializationStatus.set('authenticated');
       this.accountSync.start(user.id);
     } catch (error) {
-      this.handleSessionLoadError(error);
+      if (epoch === this.sessionEpoch) this.handleSessionLoadError(error, true);
       throw error;
     }
   }
 
   async logout(): Promise<void> {
+    ++this.sessionEpoch;
+    this.rememberExplicitLogout();
     this.accountSync.stop();
     try {
       await firstValueFrom(this.api.logout());
@@ -83,42 +100,50 @@ export class AuthSessionService {
   }
 
   invalidateSession(): void {
+    ++this.sessionEpoch;
     this.clearAuthState();
   }
 
   refreshAccessToken(): Promise<string> {
-    if (this.refreshPromise) {
-      return this.refreshPromise;
+    const epoch = this.sessionEpoch;
+    if (this.refreshRequest?.epoch === epoch) {
+      return this.refreshRequest.promise;
     }
 
-    this.refreshPromise = firstValueFrom(this.api.refresh())
+    let promise!: Promise<string>;
+    promise = firstValueFrom(this.api.refresh())
       .then(({ accessToken }) => {
+        if (epoch !== this.sessionEpoch) throw new SessionSupersededError();
         this.setAccessToken(accessToken);
         return accessToken;
       })
       .catch((error: unknown) => {
-        if (error instanceof HttpErrorResponse && error.status === 401) {
-          this.clearAuthState();
+        if (epoch === this.sessionEpoch && isUnauthorized(error)) {
+          this.invalidateSession();
         }
         throw error;
       })
       .finally(() => {
-        this.refreshPromise = null;
+        if (this.refreshRequest?.promise === promise) this.refreshRequest = null;
       });
 
-    return this.refreshPromise;
+    this.refreshRequest = { epoch, promise };
+    return promise;
   }
 
-  private async restoreSession(): Promise<void> {
+  private async restoreSession(epoch: number): Promise<void> {
     this.initializationStatus.set('checking');
+    this.restoreAttemptFailed.set(false);
     try {
       await this.refreshAccessToken();
+      if (epoch !== this.sessionEpoch) return;
       const user = await firstValueFrom(this.api.getCurrentUser());
+      if (epoch !== this.sessionEpoch) return;
       this.currentUser.set(user);
-      this.initializationStatus.set('ready');
+      this.initializationStatus.set('authenticated');
       this.accountSync.start(user.id);
     } catch (error) {
-      this.handleSessionLoadError(error);
+      if (epoch === this.sessionEpoch) this.handleSessionLoadError(error, true);
     }
   }
 
@@ -130,17 +155,52 @@ export class AuthSessionService {
     this.accountSync.stop();
     this.accessToken.set(null);
     this.currentUser.set(null);
-    this.initializationStatus.set('ready');
+    this.restoreAttemptFailed.set(false);
+    this.initializationStatus.set('unauthenticated');
   }
 
-  private handleSessionLoadError(error: unknown): void {
-    if (error instanceof HttpErrorResponse && error.status === 401) {
-      this.clearAuthState();
+  private handleSessionLoadError(error: unknown, missingUserIsDefinitive = false): void {
+    if (isUnauthorized(error) || (missingUserIsDefinitive && isStatus(error, 404))) {
+      this.invalidateSession();
       return;
     }
 
-    // A network/5xx failure is not evidence of an invalid token. Preserve it for an explicit retry.
-    this.currentUser.set(null);
-    this.initializationStatus.set('unavailable');
+    // A network/5xx failure is not evidence of an invalid session. Stay in checking until retry.
+    this.restoreAttemptFailed.set(true);
+    this.initializationStatus.set('checking');
   }
+
+  private rememberExplicitLogout(): void {
+    try {
+      globalThis.localStorage?.setItem(AuthSessionService.explicitLogoutKey, 'true');
+    } catch {
+      // The server still revokes the HttpOnly refresh session when storage is unavailable.
+    }
+  }
+
+  private clearExplicitLogout(): void {
+    try {
+      globalThis.localStorage?.removeItem(AuthSessionService.explicitLogoutKey);
+    } catch {
+      // Login remains valid in memory when browser storage is unavailable.
+    }
+  }
+
+  private wasExplicitlyLoggedOut(): boolean {
+    try {
+      return globalThis.localStorage?.getItem(AuthSessionService.explicitLogoutKey) === 'true';
+    } catch {
+      return false;
+    }
+  }
+}
+
+class SessionSupersededError extends Error {}
+
+function isUnauthorized(error: unknown): boolean {
+  return isStatus(error, 401);
+}
+
+function isStatus(error: unknown, status: number): boolean {
+  return error instanceof HttpErrorResponse && error.status === status;
 }

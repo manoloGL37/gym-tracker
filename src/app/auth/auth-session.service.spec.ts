@@ -34,6 +34,17 @@ describe('AuthSessionService', () => {
     service = TestBed.inject(AuthSessionService);
   });
 
+  it('starts in checking state before restoration completes', () => {
+    const response = new Subject<AuthResponse>();
+    api.refresh.and.returnValue(response);
+
+    void service.initialize();
+
+    expect(service.initializationStatus()).toBe('checking');
+    expect(service.isAuthenticated()).toBeFalse();
+    expect(service.isGuest()).toBeFalse();
+  });
+
   it('restores a session on app restart through refresh and /me', async () => {
     api.refresh.and.returnValue(of({ accessToken: 'restored-token' }));
     api.getCurrentUser.and.returnValue(of(user));
@@ -44,6 +55,7 @@ describe('AuthSessionService', () => {
     expect(api.getCurrentUser).toHaveBeenCalledOnceWith();
     expect(service.accessToken()).toBe('restored-token');
     expect(service.currentUser()).toEqual(user);
+    expect(service.initializationStatus()).toBe('authenticated');
     expect(service.persistenceMode()).toBe('cloud');
     expect(accountSync.start).toHaveBeenCalledOnceWith(user.id);
   });
@@ -56,7 +68,7 @@ describe('AuthSessionService', () => {
 
     expect(service.isGuest()).toBeTrue();
     expect(service.accessToken()).toBeNull();
-    expect(service.initializationStatus()).toBe('ready');
+    expect(service.initializationStatus()).toBe('unauthenticated');
     expect(localStorage.getItem('guest-data-check')).toBe('keep');
   });
 
@@ -66,8 +78,20 @@ describe('AuthSessionService', () => {
 
     await service.initialize();
 
-    expect(service.initializationStatus()).toBe('unavailable');
+    expect(service.initializationStatus()).toBe('checking');
+    expect(service.isGuest()).toBeFalse();
+    expect(service.restoreAttemptFailed()).toBeTrue();
     expect(localStorage.getItem('guest-data-check')).toBe('keep');
+  });
+
+  it('does not log out when startup refresh fails with a server error', async () => {
+    api.refresh.and.returnValue(throwError(() => new HttpErrorResponse({ status: 503 })));
+
+    await service.initialize();
+
+    expect(service.initializationStatus()).toBe('checking');
+    expect(service.isGuest()).toBeFalse();
+    expect(service.restoreAttemptFailed()).toBeTrue();
   });
 
   it('establishes a usable in-memory session on login', async () => {
@@ -78,6 +102,7 @@ describe('AuthSessionService', () => {
 
     expect(service.accessToken()).toBe('new-token');
     expect(service.currentUser()).toEqual(user);
+    expect(service.initializationStatus()).toBe('authenticated');
     expect(localStorage.getItem('gym-tracker:auth:access-token')).toBeNull();
     expect(accountSync.start).toHaveBeenCalledOnceWith(user.id);
   });
@@ -120,8 +145,39 @@ describe('AuthSessionService', () => {
     expect(api.logout).toHaveBeenCalledOnceWith();
     expect(service.accessToken()).toBeNull();
     expect(service.isGuest()).toBeTrue();
+    expect(service.initializationStatus()).toBe('unauthenticated');
     expect(localStorage.getItem('guest-data-check')).toBe('keep');
     expect(accountSync.stop).toHaveBeenCalled();
+  });
+
+  it('does not restore again after explicit logout', async () => {
+    service.accessToken.set('token');
+    service.currentUser.set(user);
+    service.initializationStatus.set('authenticated');
+    api.logout.and.returnValue(of(undefined));
+
+    await service.logout();
+    api.refresh.calls.reset();
+    await service.initialize();
+
+    expect(api.refresh).not.toHaveBeenCalled();
+    expect(service.initializationStatus()).toBe('unauthenticated');
+  });
+
+  it('ignores an in-flight restoration that completes after logout', async () => {
+    const refresh = new Subject<AuthResponse>();
+    api.refresh.and.returnValue(refresh);
+    api.logout.and.returnValue(of(undefined));
+
+    const initialization = service.initialize();
+    await service.logout();
+    refresh.next({ accessToken: 'stale-token' });
+    refresh.complete();
+    await initialization;
+
+    expect(service.accessToken()).toBeNull();
+    expect(service.initializationStatus()).toBe('unauthenticated');
+    expect(api.getCurrentUser).not.toHaveBeenCalled();
   });
 
   it('leaves guest Dexie data untouched on logout', async () => {

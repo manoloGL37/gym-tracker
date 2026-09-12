@@ -164,10 +164,6 @@ export class SettingsComponent implements OnInit {
     this.t.setLang(lang);
   }
 
-  async retryAuthInitialization(): Promise<void> {
-    await this.auth.retryInitialization();
-  }
-
   async logout(): Promise<void> {
     try {
       await this.auth.logout();

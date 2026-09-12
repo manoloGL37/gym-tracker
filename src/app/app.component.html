@@ -1,1 +1,18 @@
-<router-outlet></router-outlet>
+@if (auth.isInitializing()) {
+  <main class="auth-restore" aria-busy="true" aria-live="polite">
+    <div class="auth-restore__brand" aria-label="Gym Tracker">
+      <span aria-hidden="true">GT</span>
+      <strong>Gym Tracker</strong>
+    </div>
+    <div class="auth-restore__spinner" aria-hidden="true"></div>
+    <h1>Comprobando tu sesión...</h1>
+    @if (restoreTakingLong()) {
+      <p>El servidor se está iniciando. Esto puede tardar unos segundos.</p>
+    }
+    @if (auth.restoreAttemptFailed()) {
+      <button type="button" (click)="retrySessionRestore()">Reintentar conexión</button>
+    }
+  </main>
+} @else {
+  <router-outlet></router-outlet>
+}

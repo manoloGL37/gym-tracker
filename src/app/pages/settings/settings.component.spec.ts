@@ -26,8 +26,8 @@ describe('SettingsComponent account data status', () => {
       providers: [
         provideRouter([]),
         { provide: AuthSessionService, useValue: {
-          isAuthenticated: signal(true), isInitializing: signal(false), initializationStatus: signal('ready'),
-          currentUser: signal({ id: 'account-a', email: 'athlete@example.com' }), logout: () => Promise.resolve(), retryInitialization: () => Promise.resolve(),
+          isAuthenticated: signal(true), isInitializing: signal(false),
+          currentUser: signal({ id: 'account-a', email: 'athlete@example.com' }), logout: () => Promise.resolve(),
         } },
         { provide: AccountSyncService, useValue: {
           status, completed: signal(3), total: signal(3), attention, retryNow: jasmine.createSpy('retryNow'),
