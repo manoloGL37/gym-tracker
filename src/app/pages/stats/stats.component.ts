@@ -63,6 +63,17 @@ interface WeeklyExercisePoint {
   maxWeight: number;
 }
 
+interface PeriodFilter {
+  period: Period;
+  current: { start: Date; end: Date };
+  previous: { start: Date; end: Date };
+}
+
+interface WeekRange {
+  start: Date;
+  end: Date;
+}
+
 const EMPTY_STATS: PeriodStats = {
   workoutCount: 0,
   totalSets: 0,
@@ -107,6 +118,8 @@ export class StatsComponent implements OnInit {
   private readonly migration = inject(LocalToCloudMigrationService);
 
   readonly selectedPeriod = signal<Period>('week');
+  /** Period represented by the last response committed to the main chart. */
+  readonly confirmedPeriod = signal<Period>('week');
   readonly currentStats = signal<PeriodStats>({ ...EMPTY_STATS });
   readonly previousStats = signal<PeriodStats>({ ...EMPTY_STATS });
   readonly comparisonChanges = signal<Record<ComparableMetric, number>>({ ...EMPTY_CHANGES });
@@ -132,6 +145,8 @@ export class StatsComponent implements OnInit {
 
   weekFrom = toIsoWeek(addCalendarDays(new Date(), -49));
   weekTo = toIsoWeek(new Date());
+  /** The interval used by the currently displayed weekly/exercise results. */
+  readonly appliedWeekRange = signal<WeekRange | null>(this.selectedWeekRange());
 
   readonly evolutionChartData = computed<ChartData<'line', number[], string>>(() => {
     const points = this.currentStats().dailyDistribution;
@@ -233,7 +248,7 @@ export class StatsComponent implements OnInit {
     scales: {
       x: {
         grid: { display: false },
-        ticks: { color: CHART_INK, maxRotation: 0, autoSkip: true, maxTicksLimit: this.selectedPeriod() === 'week' ? 7 : 8 },
+        ticks: { color: CHART_INK, maxRotation: 0, autoSkip: true, maxTicksLimit: this.confirmedPeriod() === 'week' ? 7 : 8 },
         border: { display: false },
       },
       volume: {
@@ -265,7 +280,7 @@ export class StatsComponent implements OnInit {
       untracked(() => {
         this.source.set(authenticated ? 'cloud' : 'local');
         if (!authenticated) this.clearExerciseSelection();
-        void this.loadStats();
+        void this.refreshStatistics();
       });
     });
   }
@@ -273,19 +288,20 @@ export class StatsComponent implements OnInit {
   async ngOnInit(): Promise<void> {
     this.source.set(this.auth.isAuthenticated() ? 'cloud' : 'local');
     this.initialized.set(true);
-    await this.loadStats();
+    await this.refreshStatistics();
   }
 
   async loadStats(): Promise<void> {
     const requestVersion = ++this.loadVersion;
+    const filter = this.periodFilter(this.selectedPeriod());
     this.loading.set(true);
     this.statsRequest.begin();
     this.error.set(null);
     if (this.source() === 'cloud' && this.auth.isAuthenticated()) {
-      await this.loadCloudStats(requestVersion);
+      await this.loadCloudStats(requestVersion, filter);
       return;
     }
-    await this.loadLocalStats(requestVersion);
+    await this.loadLocalStats(requestVersion, filter);
   }
 
   async setPeriod(period: Period): Promise<void> {
@@ -315,18 +331,19 @@ export class StatsComponent implements OnInit {
   }
 
   async applyWeeklyRange(): Promise<void> {
-    if (!this.selectedWeekRange()) {
+    const range = this.selectedWeekRange();
+    if (!range) {
       this.weeklyError.set(this.t.t('stats.weekRangeError'));
       return;
     }
+    this.appliedWeekRange.set(range);
     await Promise.all([
-      this.loadWeeklyProgress(),
-      this.source() === 'cloud' && this.selectedExerciseId ? this.loadExerciseStats() : Promise.resolve(),
+      this.loadWeeklyProgress(range),
+      this.source() === 'cloud' && this.selectedExerciseId ? this.loadExerciseStats(range) : Promise.resolve(),
     ]);
   }
 
-  async loadWeeklyProgress(): Promise<void> {
-    const range = this.selectedWeekRange();
+  async loadWeeklyProgress(range = this.appliedWeekRange()): Promise<void> {
     if (!range) {
       this.weeklyError.set(this.t.t('stats.weekRangeError'));
       return;
@@ -355,7 +372,6 @@ export class StatsComponent implements OnInit {
       }
     } catch {
       if (requestVersion === this.weeklyLoadVersion) {
-        this.weeklyProgress.set([]);
         this.weeklyError.set(this.t.t('stats.weeklyError'));
       }
     } finally {
@@ -364,17 +380,17 @@ export class StatsComponent implements OnInit {
   }
 
   async selectExercise(exerciseId: string): Promise<void> {
+    ++this.exerciseLoadVersion;
     this.selectedExerciseId = exerciseId;
     this.selectedExercise.set(this.exerciseResults().find(exercise => exercise.id === exerciseId) ?? null);
     this.exerciseStats.set(null);
     this.exerciseStatsError.set(null);
-    if (exerciseId) await this.loadExerciseStats();
+    if (exerciseId) await this.loadExerciseStats(this.appliedWeekRange());
   }
 
-  async loadExerciseStats(): Promise<void> {
+  async loadExerciseStats(range = this.appliedWeekRange()): Promise<void> {
     if (!this.auth.isAuthenticated() || !this.selectedExerciseId) return;
     const requestVersion = ++this.exerciseLoadVersion;
-    const range = this.selectedWeekRange();
     if (!range) {
       this.exerciseStatsError.set(this.t.t('stats.weekRangeError'));
       return;
@@ -391,7 +407,6 @@ export class StatsComponent implements OnInit {
       }
     } catch {
       if (requestVersion === this.exerciseLoadVersion) {
-        this.exerciseStats.set(null);
         this.exerciseStatsError.set(this.t.t('stats.exerciseStatsError'));
       }
     } finally {
@@ -480,7 +495,7 @@ export class StatsComponent implements OnInit {
   }
 
   getPeriodLabel(): string {
-    const { start, end } = this.getPeriodRange(this.selectedPeriod(), 0);
+    const { start, end } = this.getPeriodRange(this.confirmedPeriod(), 0);
     const format = (date: Date) => date.toLocaleDateString(this.t.lang(), { day: 'numeric', month: 'short' });
     return `${format(start)} – ${format(end)}`;
   }
@@ -504,7 +519,7 @@ export class StatsComponent implements OnInit {
       .join('; ')}`;
   }
 
-  private async loadLocalStats(requestVersion: number): Promise<void> {
+  private async loadLocalStats(requestVersion: number, filter: PeriodFilter): Promise<void> {
     try {
       const rawWorkouts = await WorkoutHistoryRepository.getAll();
       const accountId = this.auth.currentUser?.()?.id;
@@ -514,15 +529,13 @@ export class StatsComponent implements OnInit {
       if (requestVersion !== this.loadVersion || this.source() !== 'local') return;
       const workouts = rawWorkouts.filter((_, index) => !migrated[index]);
       this.localWorkouts = workouts;
-      const current = this.getPeriodRange(this.selectedPeriod(), 0);
-      const previous = this.getPeriodRange(this.selectedPeriod(), -1);
-      const currentStats = this.calculateStats(workouts, current.start, current.end);
-      const previousStats = this.calculateStats(workouts, previous.start, previous.end);
+      const currentStats = this.calculateStats(workouts, filter.current.start, filter.current.end);
+      const previousStats = this.calculateStats(workouts, filter.previous.start, filter.previous.end);
       this.currentStats.set(currentStats);
       this.previousStats.set(previousStats);
       this.comparisonChanges.set(calculateChanges(currentStats, previousStats));
+      this.confirmedPeriod.set(filter.period);
       this.hasConfirmedData.set(true);
-      await this.loadWeeklyProgress();
     } catch {
       if (requestVersion !== this.loadVersion) return;
       this.error.set(this.t.t('stats.localError'));
@@ -531,18 +544,16 @@ export class StatsComponent implements OnInit {
     }
   }
 
-  private async loadCloudStats(requestVersion: number): Promise<void> {
-    const current = this.getPeriodRange(this.selectedPeriod(), 0);
-    const previous = this.getPeriodRange(this.selectedPeriod(), -1);
-    const range = { from: toCalendarDate(current.start), to: toCalendarDate(current.end) };
+  private async loadCloudStats(requestVersion: number, filter: PeriodFilter): Promise<void> {
+    const range = { from: toCalendarDate(filter.current.start), to: toCalendarDate(filter.current.end) };
 
     try {
       const [comparison, evolution] = await Promise.all([
         firstValueFrom(this.statisticsApi.comparison({
           currentFrom: range.from,
           currentTo: range.to,
-          previousFrom: toCalendarDate(previous.start),
-          previousTo: toCalendarDate(previous.end),
+          previousFrom: toCalendarDate(filter.previous.start),
+          previousTo: toCalendarDate(filter.previous.end),
         })),
         firstValueFrom(this.statisticsApi.evolution(range)),
       ]);
@@ -550,8 +561,8 @@ export class StatsComponent implements OnInit {
       this.currentStats.set(this.cloudPeriodStats(comparison.current, evolution.data));
       this.previousStats.set(this.cloudPeriodStats(comparison.previous, []));
       this.comparisonChanges.set(pickComparableChanges(comparison.changes));
+      this.confirmedPeriod.set(filter.period);
       this.hasConfirmedData.set(true);
-      await this.loadWeeklyProgress();
     } catch {
       if (requestVersion !== this.loadVersion || this.source() !== 'cloud') return;
       this.error.set(this.t.t('stats.cloudError'));
@@ -603,7 +614,7 @@ export class StatsComponent implements OnInit {
       scales: {
         x: {
           grid: { display: false },
-          ticks: { color: CHART_INK, maxRotation: 0, autoSkip: true, maxTicksLimit: twoAxes ? 8 : this.selectedPeriod() === 'week' ? 7 : 8 },
+          ticks: { color: CHART_INK, maxRotation: 0, autoSkip: true, maxTicksLimit: twoAxes ? 8 : this.confirmedPeriod() === 'week' ? 7 : 8 },
           border: { display: false },
         },
         volume: {
@@ -631,7 +642,7 @@ export class StatsComponent implements OnInit {
   }
 
   private chartDateLabel(date: string): string {
-    return parseCalendarDate(date).toLocaleDateString(this.t.lang(), this.selectedPeriod() === 'week'
+    return parseCalendarDate(date).toLocaleDateString(this.t.lang(), this.confirmedPeriod() === 'week'
       ? { weekday: 'short' }
       : { day: 'numeric', month: 'short' });
   }
@@ -644,7 +655,7 @@ export class StatsComponent implements OnInit {
     return parseCalendarDate(date).toLocaleDateString(this.t.lang(), { day: 'numeric', month: 'short' });
   }
 
-  private selectedWeekRange(): { start: Date; end: Date } | null {
+  private selectedWeekRange(): WeekRange | null {
     const from = isoWeekBounds(this.weekFrom);
     const to = isoWeekBounds(this.weekTo);
     return from && to && from.start <= to.end ? { start: from.start, end: to.end } : null;
@@ -659,10 +670,24 @@ export class StatsComponent implements OnInit {
   }
 
   private clearExerciseSelection(): void {
+    ++this.exerciseLoadVersion;
     this.selectedExerciseId = '';
     this.selectedExercise.set(null);
     this.exerciseStats.set(null);
     this.exerciseStatsError.set(null);
+  }
+
+  private periodFilter(period: Period): PeriodFilter {
+    return {
+      period,
+      current: this.getPeriodRange(period, 0),
+      previous: this.getPeriodRange(period, -1),
+    };
+  }
+
+  private async refreshStatistics(): Promise<void> {
+    await this.loadStats();
+    await this.loadWeeklyProgress();
   }
 }
 
