@@ -1,6 +1,5 @@
 import { HttpErrorResponse, HttpInterceptorFn } from '@angular/common/http';
 import { inject } from '@angular/core';
-import { Router } from '@angular/router';
 import { catchError, from, of, switchMap, throwError } from 'rxjs';
 import { environment } from '../../environments/environment';
 import { AUTH_RETRY_ATTEMPTED, SKIP_AUTH_INTERCEPTOR } from './auth-http.context';
@@ -12,7 +11,6 @@ export const authInterceptor: HttpInterceptorFn = (request, next) => {
   }
 
   const session = inject(AuthSessionService);
-  const router = inject(Router);
   const token = session.accessToken();
   const authorizedRequest = token
     ? request.clone({ setHeaders: { Authorization: `Bearer ${token}` } })
@@ -39,13 +37,7 @@ export const authInterceptor: HttpInterceptorFn = (request, next) => {
           context: request.context.set(AUTH_RETRY_ATTEMPTED, true),
           setHeaders: { Authorization: `Bearer ${accessToken}` },
         }))),
-        catchError((refreshError: unknown) => {
-          if (refreshError instanceof HttpErrorResponse && refreshError.status === 401) {
-            session.invalidateSession();
-            void router.navigate(['/login']);
-          }
-          return throwError(() => refreshError);
-        }),
+        catchError((refreshError: unknown) => throwError(() => refreshError)),
       );
     }),
   );

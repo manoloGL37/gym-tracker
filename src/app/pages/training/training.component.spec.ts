@@ -19,6 +19,7 @@ describe('TrainingComponent', () => {
   let workoutApi: jasmine.SpyObj<WorkoutApiService>;
   let router: jasmine.SpyObj<Router>;
   let selectedGet: jasmine.Spy;
+  let activeGet: jasmine.Spy;
   let selectedClear: jasmine.Spy;
   let activeClear: jasmine.Spy;
   let cloudClear: jasmine.Spy;
@@ -28,7 +29,7 @@ describe('TrainingComponent', () => {
     router = jasmine.createSpyObj<Router>('Router', ['navigate']);
     spyOn(WorkoutHistoryRepository, 'getAll').and.resolveTo([]);
     spyOn(WorkoutHistoryRepository, 'add').and.resolveTo();
-    spyOn(ActiveTrainingRepository, 'get').and.resolveTo(undefined);
+    activeGet = spyOn(ActiveTrainingRepository, 'get').and.resolveTo(undefined);
     activeClear = spyOn(ActiveTrainingRepository, 'clear').and.resolveTo();
     spyOn(ActiveTrainingRepository, 'save').and.resolveTo();
     spyOn(CloudActiveTrainingRepository, 'get').and.resolveTo(undefined);
@@ -123,6 +124,19 @@ describe('TrainingComponent', () => {
     expect(set).toHaveBeenCalledWith(jasmine.any(Function), 1_000);
     component.ngOnDestroy();
     expect(clear).toHaveBeenCalled();
+  });
+
+  it('restores an active local workout immediately without backend access', async () => {
+    const active = localTraining('exercise-id', 'Press', [{ setIndex: 0, reps: 8, weight: 50 }]);
+    activeGet.and.resolveTo(active);
+
+    await component.ngOnInit();
+
+    expect(component.training).toEqual(active);
+    expect(component.loading).toBeFalse();
+    expect(workoutApi.create).not.toHaveBeenCalled();
+    component.now = new Date(active.startedAt).getTime() + 65_000;
+    expect(component.elapsed()).toBe('01:05');
   });
 
   it('counts valid local sets and only server-confirmed account sets', () => {

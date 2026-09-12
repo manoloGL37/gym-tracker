@@ -1,10 +1,1 @@
 :host { display:block; min-height:100dvh; }
-.auth-restore { min-height:100dvh; display:grid; grid-template-rows:auto 1fr auto auto 1fr; place-items:center; padding:max(1.25rem,env(safe-area-inset-top)) 1.25rem max(1.25rem,env(safe-area-inset-bottom)); background:var(--ground); color:var(--ink); text-align:center; }
-.auth-restore__brand { align-self:start; display:flex; align-items:center; gap:.7rem; }
-.auth-restore__brand span { display:grid; width:2rem; height:2rem; place-items:center; background:var(--ink); color:var(--paper); font-family:var(--numeric-font); font-size:.66rem; font-weight:800; }
-.auth-restore__brand strong { font-size:.82rem; letter-spacing:-.01em; }
-.auth-restore__spinner { align-self:end; width:2.35rem; height:2.35rem; margin-bottom:1.25rem; border:3px solid var(--paper-low); border-top-color:var(--signal); border-radius:50%; animation:auth-restore-spin .8s linear infinite; }
-.auth-restore h1 { align-self:start; max-width:18ch; margin:0; font-family:var(--numeric-font); font-size:clamp(1.65rem,6vw,2.35rem); letter-spacing:-.025em; line-height:1; }
-.auth-restore p { align-self:start; max-width:34rem; margin:.8rem 0 0; color:var(--muted); font-size:.86rem; line-height:1.5; }
-.auth-restore button { align-self:start; min-height:2.8rem; margin-top:1rem; border:0; padding:0 1rem; background:var(--signal); color:var(--ink); font-size:.76rem; font-weight:800; }
-@keyframes auth-restore-spin { to { transform:rotate(1turn); } }

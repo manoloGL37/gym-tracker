@@ -2,7 +2,6 @@ import { HttpClient, HttpErrorResponse, provideHttpClient, withInterceptors } fr
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { signal } from '@angular/core';
 import { fakeAsync, flushMicrotasks, TestBed } from '@angular/core/testing';
-import { Router } from '@angular/router';
 import { authInterceptor } from './auth.interceptor';
 import { AuthSessionService } from './auth-session.service';
 
@@ -16,7 +15,6 @@ describe('authInterceptor', () => {
     refreshAccessToken: jasmine.Spy<() => Promise<string>>;
     invalidateSession: jasmine.Spy<() => void>;
   };
-  let router: jasmine.SpyObj<Router>;
 
   beforeEach(() => {
     session = {
@@ -24,14 +22,11 @@ describe('authInterceptor', () => {
       refreshAccessToken: jasmine.createSpy('refreshAccessToken'),
       invalidateSession: jasmine.createSpy('invalidateSession'),
     };
-    router = jasmine.createSpyObj<Router>('Router', ['navigate']);
-    router.navigate.and.resolveTo(true);
     TestBed.configureTestingModule({
       providers: [
         provideHttpClient(withInterceptors([authInterceptor])),
         provideHttpClientTesting(),
         { provide: AuthSessionService, useValue: session },
-        { provide: Router, useValue: router },
       ],
     });
     http = TestBed.inject(HttpClient);
@@ -81,15 +76,14 @@ describe('authInterceptor', () => {
     expect(requests.expectOne(`${apiUrl}/two`).request.headers.get('Authorization')).toBe('Bearer fresh-token');
   }));
 
-  it('logs out and navigates after an invalid refresh', fakeAsync(() => {
+  it('lets the coordinated session service own definitive refresh rejection', fakeAsync(() => {
     session.refreshAccessToken.and.rejectWith(new HttpErrorResponse({ status: 401 }));
     http.get(apiUrl).subscribe({ error: () => undefined });
 
     requests.expectOne(apiUrl).flush(null, { status: 401, statusText: 'Unauthorized' });
     flushMicrotasks();
 
-    expect(session.invalidateSession).toHaveBeenCalledOnceWith();
-    expect(router.navigate).toHaveBeenCalledOnceWith(['/login']);
+    expect(session.invalidateSession).not.toHaveBeenCalled();
   }));
 
   it('does not log out on network or server failure during refresh', fakeAsync(() => {
@@ -100,6 +94,5 @@ describe('authInterceptor', () => {
     flushMicrotasks();
 
     expect(session.invalidateSession).not.toHaveBeenCalled();
-    expect(router.navigate).not.toHaveBeenCalled();
   }));
 });

@@ -1,5 +1,5 @@
 import { DOCUMENT, isPlatformBrowser } from '@angular/common';
-import { Component, effect, Inject, OnDestroy, OnInit, PLATFORM_ID, signal } from '@angular/core';
+import { Component, effect, Inject, OnDestroy, OnInit, PLATFORM_ID } from '@angular/core';
 import { Router, RouterOutlet } from '@angular/router';
 import { AuthSessionService } from './auth/auth-session.service';
 
@@ -11,8 +11,6 @@ import { AuthSessionService } from './auth/auth-session.service';
 })
 export class AppComponent implements OnInit, OnDestroy {
   title = 'gym-tracker';
-  readonly restoreTakingLong = signal(false);
-
   private cleanupCallbacks: Array<() => void> = [];
   private restoredAt = 0;
 
@@ -22,18 +20,10 @@ export class AppComponent implements OnInit, OnDestroy {
     readonly auth: AuthSessionService,
     private readonly router: Router,
   ) {
-    effect((onCleanup) => {
-      if (!this.auth.isInitializing()) {
-        this.restoreTakingLong.set(false);
-        if (this.auth.isAuthenticated() && /^\/(login|register)(?:[/?#]|$)/.test(this.router.url)) {
-          void this.router.navigate(['/home']);
-        }
-        return;
+    effect(() => {
+      if (this.auth.isAuthenticated() && /^\/(login|register)(?:[/?#]|$)/.test(this.router.url)) {
+        void this.router.navigate(['/home']);
       }
-
-      if (!isPlatformBrowser(this.platformId)) return;
-      const timer = globalThis.setTimeout(() => this.restoreTakingLong.set(true), 8000);
-      onCleanup(() => globalThis.clearTimeout(timer));
     });
   }
 
@@ -74,10 +64,6 @@ export class AppComponent implements OnInit, OnDestroy {
   ngOnDestroy(): void {
     this.cleanupCallbacks.forEach((cleanup) => cleanup());
     this.cleanupCallbacks = [];
-  }
-
-  retrySessionRestore(): void {
-    void this.auth.retryInitialization();
   }
 
   private listen(
