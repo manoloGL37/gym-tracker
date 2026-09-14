@@ -191,6 +191,23 @@ describe('StatsComponent', () => {
     expect(api.evolution).toHaveBeenCalledWith({ from: '2026-09-01', to: '2026-09-30' });
   });
 
+  it('retries an unchanged valid period and preserves the exact confirmed range', async () => {
+    await create(true);
+    await component.setPeriod('week');
+
+    expect(api.comparison).toHaveBeenCalledTimes(2);
+    expect(api.comparison).toHaveBeenCalledWith({
+      currentFrom: '2026-09-07',
+      currentTo: '2026-09-13',
+      previousFrom: '2026-08-31',
+      previousTo: '2026-09-06',
+    });
+
+    jasmine.clock().mockDate(new Date(2026, 8, 14, 12));
+    expect(toCalendarDate(component.confirmedFilter()!.current.start)).toBe('2026-09-07');
+    expect(toCalendarDate(component.confirmedFilter()!.current.end)).toBe('2026-09-13');
+  });
+
   it('commits only the latest period response when a slower earlier request finishes last', async () => {
     await create(true);
     const comparisons: Array<(value: ReturnType<typeof comparisonResponse>) => void> = [];

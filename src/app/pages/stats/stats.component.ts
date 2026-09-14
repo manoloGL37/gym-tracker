@@ -122,6 +122,8 @@ export class StatsComponent implements OnInit {
   readonly selectedPeriod = signal<Period>('week');
   /** Period represented by the last response committed to the main chart. */
   readonly confirmedPeriod = signal<Period>('week');
+  /** Exact range represented by the last confirmed main response. */
+  readonly confirmedFilter = signal<PeriodFilter | null>(null);
   readonly currentStats = signal<PeriodStats>({ ...EMPTY_STATS });
   readonly previousStats = signal<PeriodStats>({ ...EMPTY_STATS });
   readonly comparisonChanges = signal<Record<ComparableMetric, number>>({ ...EMPTY_CHANGES });
@@ -313,7 +315,6 @@ export class StatsComponent implements OnInit {
   }
 
   async setPeriod(period: Period): Promise<void> {
-    if (period === this.selectedPeriod()) return;
     this.selectedPeriod.set(period);
     await this.loadStats();
   }
@@ -503,7 +504,7 @@ export class StatsComponent implements OnInit {
   }
 
   getPeriodLabel(): string {
-    const { start, end } = this.getPeriodRange(this.confirmedPeriod(), 0);
+    const { start, end } = this.confirmedFilter()?.current ?? this.getPeriodRange(this.confirmedPeriod(), 0);
     const format = (date: Date) => date.toLocaleDateString(this.t.lang(), { day: 'numeric', month: 'short' });
     return `${format(start)} – ${format(end)}`;
   }
@@ -543,6 +544,7 @@ export class StatsComponent implements OnInit {
       this.previousStats.set(previousStats);
       this.comparisonChanges.set(calculateChanges(currentStats, previousStats));
       this.confirmedPeriod.set(filter.period);
+      this.confirmedFilter.set(filter);
       this.hasConfirmedData.set(true);
     } catch {
       if (requestVersion !== this.loadVersion) return;
@@ -570,6 +572,7 @@ export class StatsComponent implements OnInit {
       this.previousStats.set(this.cloudPeriodStats(comparison.previous, []));
       this.comparisonChanges.set(pickComparableChanges(comparison.changes));
       this.confirmedPeriod.set(filter.period);
+      this.confirmedFilter.set(filter);
       this.hasConfirmedData.set(true);
     } catch {
       if (requestVersion !== this.loadVersion || this.source() !== 'cloud') return;
