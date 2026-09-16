@@ -1,14 +1,12 @@
 import { Component, effect, inject } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
-import { RoutinesRepository, Routine, SelectedRoutineRepository } from '../../data/active-training.repository';
+import { SelectedRoutineRepository } from '../../data/active-training.repository';
 import { CommonModule } from '@angular/common';
 import { TranslationService } from '../../services/translation.service';
 import { AuthSessionService } from '../../auth/auth-session.service';
-import { RoutineApiService } from '../../routines/routine-api.service';
 import { RoutineListItem } from '../../routines/routine-domain';
-import { firstValueFrom } from 'rxjs';
-import { LocalToCloudMigrationService } from '../../migration/local-to-cloud-migration.service';
 import { AccountSyncService } from '../../migration/account-sync.service';
+import { LocalFirstReadService, RemoteReadState } from '../../data/local-first-read.service';
 
 @Component({
   selector: 'app-select-routine',
@@ -20,11 +18,14 @@ import { AccountSyncService } from '../../migration/account-sync.service';
 export class SelectRoutineComponent {
   t = inject(TranslationService);
   readonly auth = inject(AuthSessionService);
-  private readonly routineApi = inject(RoutineApiService);
-  private readonly migration = inject(LocalToCloudMigrationService);
   private readonly accountSync = inject(AccountSyncService);
+  private readonly reads = inject(LocalFirstReadService);
+  private loadId = 0;
+  private snapshotAccountId: string | null | undefined;
   routines: RoutineListItem[] = [];
   loading = true;
+  cloudLoading = false;
+  remoteState: RemoteReadState = 'local';
   cloudPageNumber = 0;
   cloudTotalPages = 0;
   error: string | null = null;
@@ -39,28 +40,33 @@ export class SelectRoutineComponent {
   }
 
   async loadRoutines(page = this.cloudPageNumber) {
-    this.loading = true;
-    const rawLocal = await RoutinesRepository.getAll();
-    const accountId = this.auth.currentUser?.()?.id;
-    const migrated = accountId ? await Promise.all(rawLocal.map(routine => this.migration.isRoutineMigrated(accountId, routine.id))) : rawLocal.map(() => false);
-    const local: RoutineListItem[] = rawLocal.filter((_, index) => !migrated[index]).map(routine => ({ source: 'local', routine }));
-    if (!this.auth.isAuthenticated()) {
-      this.routines = rawLocal.map(routine => ({ source: 'local', routine }));
-      this.loading = false;
-      return;
+    const loadId = ++this.loadId;
+    this.cloudLoading = false;
+    const accountId = this.auth.isAuthenticated() ? this.auth.currentUser?.()?.id ?? null : null;
+    if (this.snapshotAccountId !== undefined && this.snapshotAccountId !== accountId) {
+      this.routines = [];
+      this.error = null;
+      this.snapshotAccountId = undefined;
     }
+    this.loading = this.snapshotAccountId === undefined;
+    const snapshot = await this.reads.routineSnapshot(accountId);
+    if (loadId !== this.loadId) return;
+    this.applyRead(snapshot);
+    this.snapshotAccountId = accountId;
+    this.loading = false;
+    if (!accountId) return;
+    this.cloudLoading = true;
     try {
-      const cloud = await firstValueFrom(this.routineApi.list({ page, size: 10 }));
-      this.cloudPageNumber = cloud.number;
-      this.cloudTotalPages = cloud.totalPages;
-      this.routines = [...local, ...cloud.content.map(routine => ({ source: 'cloud' as const, routine }))];
+      const refreshed = await this.reads.refreshRoutines(accountId, page, 10);
+      if (loadId !== this.loadId || this.auth.currentUser?.()?.id !== accountId) return;
+      this.applyRead(refreshed);
       this.error = null;
     } catch {
-      // A cloud failure never hides the guest/legacy choices.
-      this.routines = local;
+      if (loadId !== this.loadId || this.auth.currentUser?.()?.id !== accountId) return;
+      this.remoteState = 'unavailable';
       this.error = 'No se pudieron actualizar todas tus rutinas. Las que ya estaban disponibles siguen aquí.';
     } finally {
-      this.loading = false;
+      if (loadId === this.loadId) this.cloudLoading = false;
     }
   }
 
@@ -71,6 +77,14 @@ export class SelectRoutineComponent {
   }
 
   routineKey(item: RoutineListItem): string { return `${item.source}:${item.routine.id}`; }
+  get canShowEmpty(): boolean { return this.remoteState === 'local' || this.remoteState === 'confirmed'; }
   async previousCloudPage() { if (this.cloudPageNumber > 0) await this.loadRoutines(this.cloudPageNumber - 1); }
   async nextCloudPage() { if (this.cloudPageNumber + 1 < this.cloudTotalPages) await this.loadRoutines(this.cloudPageNumber + 1); }
+
+  private applyRead(read: Awaited<ReturnType<LocalFirstReadService['routineSnapshot']>>): void {
+    this.routines = read.items;
+    this.remoteState = read.remoteState;
+    this.cloudPageNumber = read.pageNumber;
+    this.cloudTotalPages = read.totalPages;
+  }
 }

@@ -40,8 +40,10 @@
             <a routerLink="/select-routine"><b>{{ i + 1 | number:'2.0-0' }}</b><strong>{{ routine.name }}</strong><span>{{ routine.exerciseCount === null ? 'Lista para entrenar' : routine.exerciseCount + ' ejercicios' }}</span><i aria-hidden="true">→</i></a>
           }
         </div>
-      } @else {
+      } @else if (canShowRoutineEmpty) {
         <a class="rack-empty" routerLink="/routines"><strong>Aún no hay una rutina preparada.</strong><span>Crear la primera →</span></a>
+      } @else {
+        <p class="rack-empty" aria-live="polite">Reconectando…</p>
       }
     </section>
 
@@ -53,8 +55,10 @@
           <div><strong>{{ lastWorkout.routineName }}</strong><span>{{ lastWorkout.exerciseCount }} ejercicios · {{ lastWorkout.finishedAt | date:'mediumDate' }}</span></div>
           <i aria-hidden="true">↗</i>
         </a>
-      } @else {
+      } @else if (canShowWorkoutEmpty) {
         <p>Tu primera sesión formará el inicio de este registro.</p>
+      } @else {
+        <p aria-live="polite">Actualizando el historial…</p>
       }
       <button type="button" (click)="addWorkout()">Añadir un entrenamiento anterior</button>
     </section>

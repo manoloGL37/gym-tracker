@@ -11,6 +11,7 @@ import { RoutinePageResponse, RoutineResponse } from '../../routines/routine-api
 import { TranslationService } from '../../services/translation.service';
 import { AccountSyncService } from '../../migration/account-sync.service';
 import { RoutinesComponent } from './routines.component';
+import { LocalFirstReadService } from '../../data/local-first-read.service';
 
 const local: Routine = { id: 'local-id', name: 'Fuerza', exercises: [{ id: 'local-exercise', name: 'Press', setsCount: 3 }] };
 const cloud: RoutineResponse = { id: 'cloud-id', clientId: 'stable-client-id', name: 'Movilidad', description: null, exercises: [], createdAt: '2026-01-01T10:00:00', updatedAt: '2026-01-01T10:00:00' };
@@ -23,6 +24,7 @@ describe('RoutinesComponent local/cloud boundary', () => {
   let authenticated: ReturnType<typeof signal<boolean>>;
   let routineApi: jasmine.SpyObj<RoutineApiService>;
   let exerciseApi: jasmine.SpyObj<ExerciseApiService>;
+  let reads: jasmine.SpyObj<LocalFirstReadService>;
 
   async function create(isAuthenticated: boolean): Promise<void> {
     authenticated = signal(isAuthenticated);
@@ -32,13 +34,21 @@ describe('RoutinesComponent local/cloud boundary', () => {
     exerciseApi.list.and.returnValue(of({ content: [], page: 0, size: 10, totalElements: 0, totalPages: 0 }));
     exerciseApi.create.and.returnValue(of(customExercise));
     spyOn(RoutinesRepository, 'getAll').and.resolveTo([local]);
+    const readItems = [
+      { source: 'local' as const, routine: local },
+      ...(isAuthenticated ? [{ source: 'cloud' as const, routine: page.content[0] }] : []),
+    ];
+    reads = jasmine.createSpyObj<LocalFirstReadService>('LocalFirstReadService', ['routineSnapshot', 'refreshRoutines']);
+    reads.routineSnapshot.and.resolveTo({ items: readItems, remoteState: isAuthenticated ? 'refreshing' : 'local', pageNumber: 0, totalPages: isAuthenticated ? 1 : 0 });
+    reads.refreshRoutines.and.resolveTo({ items: readItems, remoteState: 'confirmed', pageNumber: 0, totalPages: isAuthenticated ? 1 : 0 });
     await TestBed.configureTestingModule({
       imports: [RoutinesComponent],
       providers: [
-        { provide: AuthSessionService, useValue: { isAuthenticated: authenticated } },
+        { provide: AuthSessionService, useValue: { isAuthenticated: authenticated, currentUser: signal(isAuthenticated ? { id: 'account-a' } : null) } },
         { provide: RoutineApiService, useValue: routineApi },
         { provide: ExerciseApiService, useValue: exerciseApi },
         { provide: AccountSyncService, useValue: { status: signal('synced') } },
+        { provide: LocalFirstReadService, useValue: reads },
         { provide: TranslationService, useValue: { lang: signal<'en' | 'es'>('en'), t: (key: string) => key } },
       ],
     }).compileComponents();
@@ -144,5 +154,38 @@ describe('RoutinesComponent local/cloud boundary', () => {
     expect(component.cloudDraft.name).toBe('Torso');
     expect(component.cloudDraft.exercises.map(exercise => exercise.exerciseId)).toEqual(['kept-id']);
     expect(component.selectorError()).toContain('reintentar');
+  });
+
+  it('renders known local routines during remote refresh without showing the empty state', async () => {
+    await create(true);
+    component.routines = [{ source: 'local', routine: local }];
+    component.loading = false;
+    component.cloudLoading = true;
+    component.remoteState = 'refreshing';
+    fixture.detectChanges();
+    const text = fixture.nativeElement.textContent as string;
+    expect(text).toContain('Fuerza');
+    expect(text).not.toContain('Crear primera rutina');
+    expect(text).toContain('Actualizando');
+  });
+
+  it('shows the true empty state only after the remote account confirms empty', async () => {
+    await create(true);
+    component.routines = [];
+    component.loading = false;
+    component.cloudLoading = false;
+    component.remoteState = 'confirmed';
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('Crear primera rutina');
+  });
+
+  it('retains local routines after a 503 instead of replacing them with an empty state', async () => {
+    await create(true);
+    reads.refreshRoutines.and.rejectWith(new HttpErrorResponse({ status: 503 }));
+    await component.loadRoutines();
+    fixture.detectChanges();
+    expect(component.routines.some(item => item.routine.id === local.id)).toBeTrue();
+    expect(fixture.nativeElement.textContent).not.toContain('Crear primera rutina');
+    expect(component.remoteState).toBe('unavailable');
   });
 });
