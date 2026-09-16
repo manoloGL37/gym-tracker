@@ -2,19 +2,18 @@ import { Component, inject, computed, effect } from '@angular/core';
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { TranslationService } from '../../services/translation.service';
 import { Router, RouterLink } from '@angular/router';
-import { ActiveTrainingRepository, CloudActiveTrainingRepository, RoutinesRepository, Routine, WorkoutHistoryRepository } from '../../data/active-training.repository';
+import { ActiveTrainingRepository, CloudActiveTrainingRepository, Routine } from '../../data/active-training.repository';
 import { WorkoutHistory } from '../../data/workout-history.model';
 import { ActiveTraining } from '../training/training.model';
 import { BodyWeightRepository } from '../../data/body-weight.repository';
 import { BodyWeightEntry } from '../../data/body-weight.model';
 import { CloudActiveTraining } from '../../workouts/workout-domain';
 import { AuthSessionService } from '../../auth/auth-session.service';
-import { LocalToCloudMigrationService } from '../../migration/local-to-cloud-migration.service';
 import { AccountSyncService } from '../../migration/account-sync.service';
-import { RoutineApiService } from '../../routines/routine-api.service';
-import { WorkoutApiService } from '../../workouts/workout-api.service';
 import { StatisticsApiService } from '../../statistics/statistics-api.service';
 import { firstValueFrom } from 'rxjs';
+import { LocalFirstReadService, RemoteReadState, RoutineReadModel, WorkoutReadItem, WorkoutReadModel } from '../../data/local-first-read.service';
+import { StatisticsSummaryResponse } from '../../statistics/statistics-api.models';
 
 interface HomeWorkout {
   id: string;
@@ -46,13 +45,15 @@ export class HomeComponent {
   latestWeight: BodyWeightEntry | null = null;
   routineShortcuts: HomeRoutine[] = [];
   loading = true;
+  routineRemoteState: RemoteReadState = 'local';
+  workoutRemoteState: RemoteReadState = 'local';
   readonly today = new Date();
   private readonly auth = inject(AuthSessionService);
-  private readonly migration = inject(LocalToCloudMigrationService);
   private readonly accountSync = inject(AccountSyncService);
-  private readonly routineApi = inject(RoutineApiService);
-  private readonly workoutApi = inject(WorkoutApiService);
+  private readonly reads = inject(LocalFirstReadService);
   private readonly statisticsApi = inject(StatisticsApiService);
+  private loadId = 0;
+  private snapshotAccountId: string | null | undefined;
   readonly workoutSyncText = computed(() => {
     if (!this.auth.isAuthenticated()) return null;
     const pending = this.accountSync.pendingWorkouts();
@@ -84,71 +85,31 @@ export class HomeComponent {
   }
 
   private async loadDashboard(): Promise<void> {
-    this.loading = true;
-    const [workouts, activeTraining, cloudActiveTraining, weightEntries, routines] = await Promise.all([
-      WorkoutHistoryRepository.getAll(),
+    const loadId = ++this.loadId;
+    const accountId = this.auth.isAuthenticated() ? this.auth.currentUser?.()?.id ?? null : null;
+    if (this.snapshotAccountId !== undefined && this.snapshotAccountId !== accountId) {
+      this.lastWorkout = null;
+      this.routineShortcuts = [];
+      this.weekWorkoutCount = 0;
+      this.weekVolume = 0;
+      this.snapshotAccountId = undefined;
+    }
+    this.loading = this.snapshotAccountId === undefined;
+    const [workouts, routines, activeTraining, cloudActiveTraining, weightEntries] = await Promise.all([
+      this.reads.workoutSnapshot(accountId),
+      this.reads.routineSnapshot(accountId),
       ActiveTrainingRepository.get().then(training => training ?? null),
       CloudActiveTrainingRepository.get().then(training => training ?? null),
       BodyWeightRepository.getAll(),
-      RoutinesRepository.getAll(),
     ]);
-
-    const accountId = this.auth.currentUser?.()?.id;
+    if (loadId !== this.loadId) return;
     this.activeTraining = activeTraining ?? cloudActiveTraining;
     this.latestWeight = weightEntries[0] ?? null;
-    if (!accountId) {
-      this.useStoredDashboard(workouts, routines);
-      this.loading = false;
-      return;
-    }
-
-    const [pendingLocal, accountLocal, migratedRoutines] = await Promise.all([
-      this.migration.getPendingLocalWorkouts(accountId),
-      this.migration.getAccountLocalWorkouts(accountId),
-      Promise.all(routines.map(routine => this.migration.isRoutineMigrated(accountId, routine.id))),
-    ]);
-
-    try {
-      const range = this.currentWeekRange();
-      const [summary, accountWorkouts, accountRoutines] = await Promise.all([
-        firstValueFrom(this.statisticsApi.summary(range)),
-        firstValueFrom(this.workoutApi.list({ page: 0, size: 1 })),
-        firstValueFrom(this.routineApi.list({ page: 0, size: 3 })),
-      ]);
-      const pendingThisWeek = this.getCurrentWeekWorkouts(pendingLocal);
-      this.weekWorkoutCount = summary.workouts + pendingThisWeek.length;
-      this.weekVolume = summary.volume + pendingThisWeek.reduce((sum, workout) => sum + this.calculateWorkoutVolume(workout), 0);
-      const latest = accountWorkouts.content[0];
-      let routineName = 'Rutina sin nombre';
-      if (latest?.routineId) {
-        try { routineName = (await firstValueFrom(this.routineApi.get(latest.routineId))).name; } catch { /* The workout remains readable. */ }
-      }
-      const latestPending = pendingLocal[0];
-      const latestIsPending = latestPending && (!latest || new Date(latestPending.finishedAt).getTime() > new Date(latest.completedAt ?? latest.startedAt).getTime());
-      this.lastWorkout = latestIsPending ? {
-        id: latestPending.id,
-        routineName: latestPending.routineName,
-        finishedAt: latestPending.finishedAt,
-        exerciseCount: latestPending.exercises.length,
-        accountBacked: false,
-      } : latest ? {
-        id: latest.id,
-        routineName,
-        finishedAt: latest.completedAt ?? latest.startedAt,
-        exerciseCount: latest.exercises.length,
-        accountBacked: true,
-      } : null;
-      const visibleStored = routines.filter((_, index) => !migratedRoutines[index]).map(routine => this.homeRoutine(routine));
-      this.routineShortcuts = [
-        ...accountRoutines.content.map(routine => ({ id: routine.id, name: routine.name, exerciseCount: null })),
-        ...visibleStored,
-      ].slice(0, 3);
-      this.loading = false;
-    } catch {
-      // A temporary account failure is not an empty dashboard.
-      this.useStoredDashboard(accountLocal, routines.filter((_, index) => !migratedRoutines[index]));
-      this.loading = false;
-    }
+    this.applyWorkoutRead(workouts);
+    this.applyRoutineRead(routines);
+    this.snapshotAccountId = accountId;
+    this.loading = false;
+    if (accountId) this.refreshAccountDashboard(accountId, loadId, workouts);
   }
 
   startTraining() {
@@ -186,13 +147,69 @@ export class HomeComponent {
     return { from: date(start), to: date(end) };
   }
 
-  private useStoredDashboard(workouts: WorkoutHistory[], routines: Routine[]): void {
-    const currentWeek = this.getCurrentWeekWorkouts(workouts);
-    const latest = workouts[0];
-    this.lastWorkout = latest ? { id: latest.id, routineName: latest.routineName, finishedAt: latest.finishedAt, exerciseCount: latest.exercises.length, accountBacked: false } : null;
+  get canShowRoutineEmpty(): boolean { return this.routineRemoteState === 'local' || this.routineRemoteState === 'confirmed'; }
+  get canShowWorkoutEmpty(): boolean { return this.workoutRemoteState === 'local' || this.workoutRemoteState === 'confirmed'; }
+
+  private refreshAccountDashboard(accountId: string, loadId: number, snapshot: WorkoutReadModel): void {
+    const isCurrent = () => loadId === this.loadId && this.auth.currentUser?.()?.id === accountId;
+    const workouts = this.reads.refreshWorkouts(accountId, 0, 100);
+    void workouts.then(read => {
+      if (isCurrent()) this.applyWorkoutRead(read);
+    }).catch(() => {
+      if (isCurrent()) this.workoutRemoteState = 'unavailable';
+    });
+    void this.reads.refreshRoutines(accountId, 0, 3).then(read => {
+      if (isCurrent()) this.applyRoutineRead(read);
+    }).catch(() => {
+      if (isCurrent()) this.routineRemoteState = 'unavailable';
+    });
+    void firstValueFrom(this.statisticsApi.summary(this.currentWeekRange())).then(async summary => {
+      let currentWorkouts = snapshot;
+      try { currentWorkouts = await workouts; } catch { /* The local snapshot remains coherent. */ }
+      if (isCurrent()) this.applyServerSummary(summary, currentWorkouts.items);
+    }).catch(() => undefined);
+  }
+
+  private applyRoutineRead(read: RoutineReadModel): void {
+    this.routineRemoteState = read.remoteState;
+    this.routineShortcuts = read.items.slice(0, 3).map(item => item.source === 'local'
+      ? this.homeRoutine(item.routine)
+      : { id: item.routine.id, name: item.routine.name, exerciseCount: null });
+  }
+
+  private applyWorkoutRead(read: WorkoutReadModel): void {
+    this.workoutRemoteState = read.remoteState;
+    const latest = read.items[0];
+    this.lastWorkout = latest ? {
+      id: latest.id,
+      routineName: latest.routineName,
+      finishedAt: latest.finishedAt ?? latest.startedAt,
+      exerciseCount: latest.exerciseCount,
+      accountBacked: latest.source === 'cloud',
+    } : null;
+    const currentWeek = this.getCurrentWeekItems(read.items);
     this.weekWorkoutCount = currentWeek.length;
-    this.weekVolume = currentWeek.reduce((sum, workout) => sum + this.calculateWorkoutVolume(workout), 0);
-    this.routineShortcuts = routines.slice(0, 3).map(routine => this.homeRoutine(routine));
+    this.weekVolume = currentWeek.reduce((sum, workout) => sum + this.calculateReadWorkoutVolume(workout), 0);
+  }
+
+  private applyServerSummary(summary: StatisticsSummaryResponse, workouts: WorkoutReadItem[]): void {
+    const pending = this.getCurrentWeekItems(workouts).filter(workout => workout.source === 'local' && !workout.serverRepresented);
+    this.weekWorkoutCount = summary.workouts + pending.length;
+    this.weekVolume = summary.volume + pending.reduce((sum, workout) => sum + this.calculateReadWorkoutVolume(workout), 0);
+  }
+
+  private getCurrentWeekItems(workouts: WorkoutReadItem[]): WorkoutReadItem[] {
+    const start = new Date();
+    const day = start.getDay();
+    start.setDate(start.getDate() - day + (day === 0 ? -6 : 1));
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(start);
+    end.setDate(start.getDate() + 6);
+    end.setHours(23, 59, 59, 999);
+    return workouts.filter(workout => {
+      const date = new Date(workout.finishedAt ?? workout.startedAt);
+      return date >= start && date <= end;
+    });
   }
 
   private homeRoutine(routine: Routine): HomeRoutine {
@@ -206,5 +223,10 @@ export class HomeComponent {
       }, 0);
       return exerciseSum + setVolume;
     }, 0);
+  }
+
+  private calculateReadWorkoutVolume(workout: WorkoutReadItem): number {
+    if (workout.local) return this.calculateWorkoutVolume(workout.local);
+    return workout.cloud?.exercises.reduce((total, exercise) => total + exercise.sets.reduce((sum, set) => sum + set.reps * set.weight, 0), 0) ?? 0;
   }
 }

@@ -5,18 +5,19 @@
     @if (cloudError) { <p class="history-error" role="alert">{{ cloudError }}</p> }
     @if (view === 'list') {
       <section class="diary" aria-label="Sesiones en orden cronológico">
-        @if (loading) {
-          <div class="session-loading" aria-live="polite" aria-busy="true"><span></span><span></span><span></span><p>Cargando tu diario de entrenamiento…</p></div>
-        } @else if (workouts.length) {
+        @if (loading || cloudLoading) {
+          <div class="session-loading" aria-live="polite" aria-busy="true"><span></span><span></span><span></span><p>{{ cloudLoading && workouts.length ? 'Actualizando…' : cloudLoading ? 'Reconectando…' : 'Cargando tu diario de entrenamiento…' }}</p></div>
+        }
+        @if (!loading && workouts.length) {
           <div class="diary-rail" aria-hidden="true"><i></i></div>
-          @for (w of workouts; track w.id; let i = $index) {
+          @for (w of workouts; track workoutKey(w); let i = $index) {
             <article class="diary-entry">
               <time><strong>{{ (w.finishedAt || w.startedAt) | date:'dd' }}</strong><span>{{ (w.finishedAt || w.startedAt) | date:'MMM' }}</span><small>{{ (w.finishedAt || w.startedAt) | date:'y' }}</small></time>
               <a [routerLink]="['/calendar', w.id]" [queryParams]="{ source: w.source }"><span>{{ w.finishedAt ? 'SESIÓN COMPLETADA' : 'SESIÓN EN CURSO' }}</span><h2>{{ w.routineName }}</h2><p>{{ w.exerciseCount }} ejercicios @if (!w.finishedAt) { · En curso }</p><b>Ver registro <i aria-hidden="true">↗</i></b></a>
               @if (w.source === 'local') { <button type="button" (click)="onDeleteWorkout(w)" aria-label="Eliminar entrenamiento">Eliminar</button> }
             </article>
           }
-        } @else {
+        } @else if (!loading && !cloudLoading && canShowEmpty) {
           <div class="history-empty"><span aria-hidden="true">00</span><h2>El diario está por empezar</h2><p>Termina tu primera sesión y aparecerá aquí, en orden cronológico.</p><a routerLink="/select-routine">Empezar a entrenar</a></div>
         }
       </section>

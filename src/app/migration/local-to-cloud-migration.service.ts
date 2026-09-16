@@ -99,6 +99,19 @@ export class LocalToCloudMigrationService {
     return workouts.filter(workout => !isOwnedByAnother(ownership.workouts, workout.id, accountId));
   }
 
+  async getAccountLocalRoutines(accountId: string): Promise<Routine[]> {
+    const [ownership, routines] = await Promise.all([this.getOwnership(), RoutinesRepository.getAll()]);
+    return routines.filter(routine => !isOwnedByAnother(ownership.routines, routine.id, accountId));
+  }
+
+  async getRoutineMappings(accountId: string): Promise<Record<string, ResourceMapping>> {
+    return { ...(await this.getLedger(accountId)).routines };
+  }
+
+  async getWorkoutMappings(accountId: string): Promise<Record<string, ResourceMapping>> {
+    return { ...(await this.getLedger(accountId)).workouts };
+  }
+
   async chooseCatalogExercise(accountId: string, localKey: string, exercise: ExerciseResponse): Promise<void> {
     const ledger = await this.getLedger(accountId);
     const reference = await this.referenceByKey(localKey);

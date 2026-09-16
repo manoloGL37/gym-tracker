@@ -12,8 +12,8 @@ import { RoutineApiService } from '../../routines/routine-api.service';
 import { RoutineResponse } from '../../routines/routine-api.models';
 import { CloudRoutineDraft, cloudDraftFromResponse, cloudExerciseDraft, newCloudRoutineDraft, RoutineListItem, toCreateRoutineRequest } from '../../routines/routine-domain';
 import { TranslationService } from '../../services/translation.service';
-import { LocalToCloudMigrationService } from '../../migration/local-to-cloud-migration.service';
 import { AccountSyncService } from '../../migration/account-sync.service';
+import { LocalFirstReadService, RemoteReadState } from '../../data/local-first-read.service';
 
 @Component({ selector: 'app-routines', standalone: true, imports: [CommonModule, FormsModule], templateUrl: './routines.component.html', styleUrls: ['./routines.component.css'] })
 export class RoutinesComponent {
@@ -21,8 +21,10 @@ export class RoutinesComponent {
   readonly auth = inject(AuthSessionService);
   private readonly routineApi = inject(RoutineApiService);
   private readonly exerciseApi = inject(ExerciseApiService);
-  private readonly migration = inject(LocalToCloudMigrationService);
   private readonly accountSync = inject(AccountSyncService);
+  private readonly reads = inject(LocalFirstReadService);
+  private loadId = 0;
+  private snapshotAccountId: string | null | undefined;
 
   routines: RoutineListItem[] = [];
   loading = true;
@@ -31,6 +33,7 @@ export class RoutinesComponent {
   error = signal<string | null>(null);
   cloudPageNumber = 0;
   cloudTotalPages = 0;
+  remoteState: RemoteReadState = 'local';
   readonly cloudPageSize = 10;
 
   editingLocal: Routine | null = null;
@@ -62,35 +65,38 @@ export class RoutinesComponent {
     return this.editingCloud !== null || (this.auth.isAuthenticated() && this.editingLocal === null);
   }
 
+  get canShowEmpty(): boolean { return this.remoteState === 'local' || this.remoteState === 'confirmed'; }
+
   routineKey(item: RoutineListItem): string { return `${item.source}:${item.routine.id}`; }
 
   async loadRoutines(page = this.cloudPageNumber): Promise<void> {
-    this.loading = true;
-    const rawLocal = await RoutinesRepository.getAll();
-    const accountId = this.auth.currentUser?.()?.id;
-    // In an authenticated view, a confirmed cloud equivalent replaces (but never deletes) its legacy card.
-    const visibleLocal = accountId ? await this.excludeMigratedRoutines(accountId, rawLocal) : rawLocal;
-    const localItems: RoutineListItem[] = visibleLocal.map(routine => ({ source: 'local', routine }));
-    if (!this.auth.isAuthenticated()) {
-      this.routines = localItems;
-      this.loading = false;
-      return;
+    const loadId = ++this.loadId;
+    this.cloudLoading = false;
+    const accountId = this.auth.isAuthenticated() ? this.auth.currentUser?.()?.id ?? null : null;
+    if (this.snapshotAccountId !== undefined && this.snapshotAccountId !== accountId) {
+      this.routines = [];
+      this.error.set(null);
+      this.snapshotAccountId = undefined;
     }
-
+    this.loading = this.snapshotAccountId === undefined;
+    const snapshot = await this.reads.routineSnapshot(accountId);
+    if (loadId !== this.loadId) return;
+    this.applyRead(snapshot);
+    this.snapshotAccountId = accountId;
+    this.loading = false;
+    if (!accountId) return;
     this.cloudLoading = true;
     this.error.set(null);
     try {
-      const cloud = await firstValueFrom(this.routineApi.list({ page, size: this.cloudPageSize }));
-      this.cloudPageNumber = cloud.number;
-      this.cloudTotalPages = cloud.totalPages;
-      this.routines = [...localItems, ...cloud.content.map(routine => ({ source: 'cloud' as const, routine }))];
+      const refreshed = await this.reads.refreshRoutines(accountId, page, this.cloudPageSize);
+      if (loadId !== this.loadId || this.auth.currentUser?.()?.id !== accountId) return;
+      this.applyRead(refreshed);
     } catch (error) {
-      // Keep the last readable representation available while the account service wakes.
-      if (!this.routines.length) this.routines = localItems;
+      if (loadId !== this.loadId || this.auth.currentUser?.()?.id !== accountId) return;
+      this.remoteState = 'unavailable';
       this.error.set(routineErrorMessage(error));
     } finally {
-      this.cloudLoading = false;
-      this.loading = false;
+      if (loadId === this.loadId) this.cloudLoading = false;
     }
   }
 
@@ -261,9 +267,11 @@ export class RoutinesComponent {
     return names;
   }
 
-  private async excludeMigratedRoutines(accountId: string, routines: Routine[]): Promise<Routine[]> {
-    const migrated = await Promise.all(routines.map(routine => this.migration.isRoutineMigrated(accountId, routine.id)));
-    return routines.filter((_, index) => !migrated[index]);
+  private applyRead(read: Awaited<ReturnType<LocalFirstReadService['routineSnapshot']>>): void {
+    this.routines = read.items;
+    this.remoteState = read.remoteState;
+    this.cloudPageNumber = read.pageNumber;
+    this.cloudTotalPages = read.totalPages;
   }
 }
 

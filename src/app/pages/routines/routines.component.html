@@ -5,7 +5,7 @@
     <section class="program-list" aria-labelledby="program-list-title">
       <header><h2 id="program-list-title">{{ routines.length }} planes listos</h2><span>Toca editar para cambiar el orden</span></header>
       @if (error(); as message) { <p class="routine-error" role="alert">{{ message }}</p> }
-      @if (loading || cloudLoading) { <div class="routine-loading" aria-live="polite" aria-busy="true"><i></i><i></i><i></i><span>{{ cloudLoading ? 'Estamos cargando tus datos…' : 'Cargando rutinas…' }}</span></div> }
+      @if (loading || cloudLoading) { <div class="routine-loading" aria-live="polite" aria-busy="true"><i></i><i></i><i></i><span>{{ cloudLoading && routines.length ? 'Actualizando…' : cloudLoading ? 'Reconectando…' : 'Cargando rutinas…' }}</span></div> }
       @if ((!loading || routines.length) && routines.length) {
         <ol>
           @for (item of routines; track routineKey(item); let i = $index) {
@@ -17,7 +17,7 @@
           }
         </ol>
         @if (auth.isAuthenticated() && cloudTotalPages > 1) { <nav class="pagination" aria-label="Páginas de rutinas"><button (click)="previousCloudPage()" [disabled]="cloudPageNumber === 0">Anterior</button><span>{{ cloudPageNumber + 1 }} / {{ cloudTotalPages }}</span><button (click)="nextCloudPage()" [disabled]="cloudPageNumber + 1 >= cloudTotalPages">Siguiente</button></nav> }
-      } @else if (!loading) {
+      } @else if (!loading && !cloudLoading && canShowEmpty) {
         <div class="routine-empty"><span aria-hidden="true">01</span><h2>No hay una rutina preparada</h2><p>Crea un orden de ejercicios para entrar a entrenar sin improvisar.</p><button type="button" (click)="startCreate()">Crear primera rutina</button></div>
       }
     </section>

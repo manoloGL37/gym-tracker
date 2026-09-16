@@ -2,7 +2,7 @@ import { Component, inject, signal, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { WorkoutHistory } from '../../../data/workout-history.model';
-import { WorkoutHistoryRepository } from '../../../data/active-training.repository';
+import { AccountReadCacheRepository, WorkoutHistoryRepository } from '../../../data/active-training.repository';
 import { TranslationService } from '../../../services/translation.service';
 import { ActivatedRoute, Router } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
@@ -11,6 +11,7 @@ import { WorkoutResponse } from '../../../workouts/workout-api.models';
 import { RoutineApiService } from '../../../routines/routine-api.service';
 import { ExerciseApiService } from '../../../exercises/exercise-api.service';
 import { getExerciseName } from '../../../exercises/exercise-domain';
+import { AuthSessionService } from '../../../auth/auth-session.service';
 
 @Component({
   selector: 'app-workout-detail',
@@ -34,6 +35,7 @@ export class WorkoutDetailComponent implements OnInit {
   private readonly workoutApi = inject(WorkoutApiService);
   private readonly routineApi = inject(RoutineApiService);
   private readonly exerciseApi = inject(ExerciseApiService);
+  private readonly auth = inject(AuthSessionService);
 
   async ngOnInit() {
     const id = this.route.snapshot.paramMap.get('id');
@@ -44,6 +46,15 @@ export class WorkoutDetailComponent implements OnInit {
   }
 
   private async loadCloudWorkout(id: string) {
+    const accountId = this.auth.currentUser()?.id;
+    if (accountId) {
+      const cached = await AccountReadCacheRepository.getWorkouts(accountId);
+      const workout = cached?.page.content.find(item => item.id === id);
+      if (workout) {
+        this.cloudWorkout = workout;
+        this.cloudRoutineName = cached?.routineNames[workout.routineId ?? ''] ?? 'Rutina sin nombre';
+      }
+    }
     try {
       this.cloudWorkout = await firstValueFrom(this.workoutApi.get(id));
       if (this.cloudWorkout.routineId) {
@@ -52,7 +63,9 @@ export class WorkoutDetailComponent implements OnInit {
       await Promise.all(this.cloudWorkout.exercises.map(async exercise => {
         try { this.cloudExerciseNames.set(exercise.exerciseId, getExerciseName(await firstValueFrom(this.exerciseApi.get(exercise.exerciseId)), this.t.lang())); } catch { /* Keep the snapshot readable without exposing its internal identifier. */ }
       }));
-    } catch { this.cloudError = 'No se pudo cargar este entrenamiento.'; }
+    } catch {
+      if (!this.cloudWorkout) this.cloudError = 'No se pudo cargar este entrenamiento.';
+    }
   }
   cloudExerciseName(exerciseId: string): string { return this.cloudExerciseNames.get(exerciseId) ?? 'Ejercicio sin nombre'; }
 

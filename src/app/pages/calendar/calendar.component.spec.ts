@@ -1,43 +1,30 @@
 import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
-import { of, throwError } from 'rxjs';
 import { AuthSessionService } from '../../auth/auth-session.service';
-import { WorkoutHistoryRepository } from '../../data/active-training.repository';
-import { LocalToCloudMigrationService } from '../../migration/local-to-cloud-migration.service';
 import { AccountSyncService } from '../../migration/account-sync.service';
-import { RoutineApiService } from '../../routines/routine-api.service';
 import { TranslationService } from '../../services/translation.service';
-import { WorkoutApiService } from '../../workouts/workout-api.service';
 import { CalendarComponent } from './calendar.component';
+import { LocalFirstReadService, WorkoutReadItem } from '../../data/local-first-read.service';
 
 describe('CalendarComponent unified history', () => {
   let fixture: ComponentFixture<CalendarComponent>;
-  let workoutsApi: jasmine.SpyObj<WorkoutApiService>;
+  let reads: jasmine.SpyObj<LocalFirstReadService>;
 
   beforeEach(async () => {
-    spyOn(WorkoutHistoryRepository, 'getAll').and.resolveTo([
-      { id: 'already-synced', routineId: 'r1', routineName: 'Fuerza', startedAt: '2026-09-01T10:00:00', finishedAt: '2026-09-01T11:00:00', exercises: [] },
-      { id: 'pending', routineId: 'r2', routineName: 'Movilidad', startedAt: '2026-09-02T10:00:00', finishedAt: '2026-09-02T11:00:00', exercises: [] },
-    ]);
-    const migration = jasmine.createSpyObj<LocalToCloudMigrationService>('LocalToCloudMigrationService', ['getPendingLocalWorkouts', 'getAccountLocalWorkouts']);
-    migration.getPendingLocalWorkouts.and.resolveTo([
-      { id: 'pending', routineId: 'r2', routineName: 'Movilidad', startedAt: '2026-09-02T10:00:00', finishedAt: '2026-09-02T11:00:00', exercises: [] },
-    ]);
-    migration.getAccountLocalWorkouts.and.resolveTo(await WorkoutHistoryRepository.getAll());
-    workoutsApi = jasmine.createSpyObj<WorkoutApiService>('WorkoutApiService', ['list']);
-    workoutsApi.list.and.returnValue(of({ content: [{ id: 'server-copy', routineId: 'server-routine', startedAt: '2026-09-01T10:00:00', completedAt: '2026-09-01T11:00:00', exercises: [] }], number: 0, totalPages: 1 } as any));
-    const routines = jasmine.createSpyObj<RoutineApiService>('RoutineApiService', ['get']);
-    routines.get.and.returnValue(of({ name: 'Fuerza' } as any));
+    const local = (id: string, name: string, day: string): WorkoutReadItem => ({ source: 'local', id, routineName: name, startedAt: `${day}T10:00:00`, finishedAt: `${day}T11:00:00`, exerciseCount: 0, local: { id, routineId: 'routine', routineName: name, startedAt: `${day}T10:00:00`, finishedAt: `${day}T11:00:00`, exercises: [] } });
+    const snapshot = [local('pending', 'Movilidad', '2026-09-02'), local('already-synced', 'Fuerza', '2026-09-01')];
+    const refreshed = [snapshot[0], { source: 'cloud' as const, id: 'server-copy', routineName: 'Fuerza', startedAt: '2026-09-01T10:00:00', finishedAt: '2026-09-01T11:00:00', exerciseCount: 0 }];
+    reads = jasmine.createSpyObj<LocalFirstReadService>('LocalFirstReadService', ['workoutSnapshot', 'refreshWorkouts']);
+    reads.workoutSnapshot.and.resolveTo({ items: snapshot, remoteState: 'refreshing', pageNumber: 0, totalPages: 1 });
+    reads.refreshWorkouts.and.resolveTo({ items: refreshed, remoteState: 'confirmed', pageNumber: 0, totalPages: 1 });
     await TestBed.configureTestingModule({
       imports: [CalendarComponent],
       providers: [
         provideRouter([]),
         { provide: AuthSessionService, useValue: { isAuthenticated: signal(true), currentUser: signal({ id: 'account-a' }) } },
-        { provide: LocalToCloudMigrationService, useValue: migration },
         { provide: AccountSyncService, useValue: { status: signal('synced') } },
-        { provide: WorkoutApiService, useValue: workoutsApi },
-        { provide: RoutineApiService, useValue: routines },
+        { provide: LocalFirstReadService, useValue: reads },
         { provide: TranslationService, useValue: { t: (key: string) => key } },
       ],
     }).compileComponents();
@@ -60,9 +47,24 @@ describe('CalendarComponent unified history', () => {
   });
 
   it('keeps account-owned local history visible while the backend is unavailable', async () => {
-    workoutsApi.list.and.returnValue(throwError(() => new Error('sleeping')));
+    reads.refreshWorkouts.and.rejectWith(new Error('sleeping'));
     await fixture.componentInstance.loadWorkouts();
-    expect(fixture.componentInstance.workouts.map(workout => workout.id)).toEqual(['already-synced', 'pending']);
+    expect(fixture.componentInstance.workouts.map(workout => workout.id)).toEqual(['pending', 'already-synced']);
     expect(fixture.componentInstance.cloudError).not.toBeNull();
+    expect(fixture.componentInstance.loading).toBeFalse();
+  });
+
+  it('keeps pending local history interactive while remote refresh is pending', async () => {
+    let release!: (value: any) => void;
+    reads.refreshWorkouts.and.returnValue(new Promise(resolve => release = resolve));
+    const load = fixture.componentInstance.loadWorkouts();
+    await Promise.resolve();
+    await Promise.resolve();
+    fixture.detectChanges();
+    expect(fixture.componentInstance.loading).toBeFalse();
+    expect(fixture.componentInstance.workouts.map(workout => workout.id)).toContain('pending');
+    expect(fixture.nativeElement.textContent).toContain('Movilidad');
+    release({ items: fixture.componentInstance.workouts, remoteState: 'confirmed', pageNumber: 0, totalPages: 1 });
+    await load;
   });
 });

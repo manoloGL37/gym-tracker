@@ -5,6 +5,8 @@ import { WorkoutHistory } from './workout-history.model';
 import { BodyWeightEntry } from './body-weight.model';
 import { CloudActiveTraining, toBackendLocalDateTime } from '../workouts/workout-domain';
 import { MigrationLedger } from '../migration/local-to-cloud-migration.models';
+import { RoutinePageResponse } from '../routines/routine-api.models';
+import { WorkoutPageResponse } from '../workouts/workout-api.models';
 
 export interface Routine {
   id: string;
@@ -14,6 +16,19 @@ export interface Routine {
     name: string;
     setsCount: number;
   }[];
+}
+
+export interface AccountRoutineCache {
+  accountId: string;
+  page: RoutinePageResponse;
+  updatedAt: string;
+}
+
+export interface AccountWorkoutCache {
+  accountId: string;
+  page: WorkoutPageResponse;
+  routineNames: Record<string, string>;
+  updatedAt: string;
 }
 
 
@@ -45,6 +60,8 @@ class GymTrackerDB extends Dexie {
   selectedRoutine!: Table<SelectedRoutine, string>;
   bodyWeight!: Table<BodyWeightEntry, string>;
   migrationLedgers!: Table<MigrationLedger, string>;
+  accountRoutineCache!: Table<AccountRoutineCache, string>;
+  accountWorkoutCache!: Table<AccountWorkoutCache, string>;
 
   constructor() {
     super('GymTrackerDB');
@@ -67,6 +84,13 @@ class GymTrackerDB extends Dexie {
     // Account-scoped migration metadata is deliberately separate from the legacy data.
     // No migration path clears routines, history, active training or body-weight stores.
     this.version(7).stores({ ...stores, cloudActiveTraining: 'id', migrationLedgers: 'accountId' });
+    this.version(8).stores({
+      ...stores,
+      cloudActiveTraining: 'id',
+      migrationLedgers: 'accountId',
+      accountRoutineCache: 'accountId',
+      accountWorkoutCache: 'accountId',
+    });
   }
 }
 
@@ -177,6 +201,18 @@ export const WorkoutHistoryRepository = {
   },
   async getById(id: string) {
     return (await db.workoutHistory.get(id)) ?? null;
+  },
+};
+
+/** Last confirmed account reads, keyed by `/me` UUID so stale data cannot cross accounts. */
+export const AccountReadCacheRepository = {
+  getRoutines(accountId: string) { return db.accountRoutineCache.get(accountId); },
+  saveRoutines(accountId: string, page: RoutinePageResponse) {
+    return db.accountRoutineCache.put({ accountId, page, updatedAt: new Date().toISOString() });
+  },
+  getWorkouts(accountId: string) { return db.accountWorkoutCache.get(accountId); },
+  saveWorkouts(accountId: string, page: WorkoutPageResponse, routineNames: Record<string, string>) {
+    return db.accountWorkoutCache.put({ accountId, page, routineNames, updatedAt: new Date().toISOString() });
   },
 };
 

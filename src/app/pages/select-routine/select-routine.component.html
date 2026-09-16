@@ -2,8 +2,8 @@
   <header><span>INICIAR SESIÓN</span><h1>Elige el trabajo de hoy.</h1><p>Un toque abre el registro y pone en marcha el cronómetro.</p></header>
   <main>
     @if (error) { <p class="train-picker__alert" role="alert">{{ error }}</p> }
-    @if (loading) { <div class="train-picker__loading" aria-live="polite" aria-busy="true"><i></i><i></i><i></i><span>Cargando tus rutinas…</span></div> }
+    @if (loading || cloudLoading) { <div class="train-picker__loading" aria-live="polite" aria-busy="true"><i></i><i></i><i></i><span>{{ cloudLoading && routines.length ? 'Actualizando…' : cloudLoading ? 'Reconectando…' : 'Cargando tus rutinas…' }}</span></div> }
     @if (!loading && routines.length) { <ol>@for (item of routines; track routineKey(item); let i = $index) { <li><button type="button" (click)="selectRoutine(item)"><span>{{ i + 1 | number:'2.0-0' }}</span><div><strong>{{ item.routine.name }}</strong><small>@if (item.source === 'local') { {{ item.routine.exercises.length }} ejercicios } @else { Lista para entrenar }</small></div><b>Empezar <i aria-hidden="true">↗</i></b></button></li> }</ol>@if (auth.isAuthenticated() && cloudTotalPages > 1) { <nav class="picker-pagination"><button type="button" (click)="previousCloudPage()" [disabled]="cloudPageNumber === 0">Anterior</button><span>{{ cloudPageNumber + 1 }} / {{ cloudTotalPages }}</span><button type="button" (click)="nextCloudPage()" [disabled]="cloudPageNumber + 1 >= cloudTotalPages">Siguiente</button></nav> } }
-    @else if (!loading) { <section class="train-picker__empty"><span aria-hidden="true">00</span><h2>Aún no hay una rutina</h2><p>Prepara un orden de ejercicios antes de iniciar tu primera sesión.</p><a routerLink="/routines">Crear rutina</a></section> }
+    @else if (!loading && !cloudLoading && canShowEmpty) { <section class="train-picker__empty"><span aria-hidden="true">00</span><h2>Aún no hay una rutina</h2><p>Prepara un orden de ejercicios antes de iniciar tu primera sesión.</p><a routerLink="/routines">Crear rutina</a></section> }
   </main>
 </div>
