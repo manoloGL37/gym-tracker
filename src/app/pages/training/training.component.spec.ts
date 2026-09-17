@@ -1,8 +1,8 @@
-import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { ComponentFixture, fakeAsync, flushMicrotasks, TestBed, tick } from '@angular/core/testing';
 import { signal } from '@angular/core';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Router } from '@angular/router';
-import { throwError } from 'rxjs';
+import { of, Subject, throwError } from 'rxjs';
 import { AuthSessionService } from '../../auth/auth-session.service';
 import { ActiveTrainingRepository, CloudActiveTrainingRepository, SelectedRoutineRepository, WorkoutHistoryRepository } from '../../data/active-training.repository';
 import { ExerciseApiService } from '../../exercises/exercise-api.service';
@@ -169,6 +169,120 @@ describe('TrainingComponent', () => {
 
     expect(component.completedSetCount()).toBe(0);
     expect(component.cloudTraining.exercises[0].sets[0].clientId).toBe('retryable');
+    expect(component.cloudTraining.exercises[0].sets[0].syncState).toBe('pending');
+    expect(CloudActiveTrainingRepository.save).toHaveBeenCalledWith(component.cloudTraining);
+  });
+
+  it('autosaves a complete set after 600ms without requesting on every keystroke', fakeAsync(() => {
+    component.cloudTraining = cloudTraining([{ clientId: 'stable', setNumber: 1, reps: null, weight: null, rpe: null, persisted: null }]);
+    const exercise = component.cloudTraining.exercises[0];
+    workoutApi.createSet.and.returnValue(of(cloudSet(1, 8, 50)));
+
+    exercise.sets[0].weight = 5;
+    component.onCloudSetChange(exercise, 0);
+    tick(250);
+    exercise.sets[0].weight = 50;
+    component.onCloudSetChange(exercise, 0);
+    exercise.sets[0].reps = 8;
+    component.onCloudSetChange(exercise, 0);
+    tick(599);
+    expect(workoutApi.createSet).not.toHaveBeenCalled();
+
+    tick(1);
+    flushMicrotasks();
+    expect(workoutApi.createSet).toHaveBeenCalledOnceWith('w', 'we', jasmine.objectContaining({ clientId: 'stable', weight: 50, reps: 8 }));
+    expect(exercise.sets[0].syncState).toBe('saved');
+  }));
+
+  it('keeps an incomplete draft local and does not autosave it', fakeAsync(() => {
+    component.cloudTraining = cloudTraining([{ clientId: 'draft', setNumber: 1, reps: null, weight: 50, rpe: null, persisted: null }]);
+    const exercise = component.cloudTraining.exercises[0];
+
+    component.onCloudSetChange(exercise, 0);
+    tick(1_000);
+    flushMicrotasks();
+
+    expect(CloudActiveTrainingRepository.save).toHaveBeenCalledWith(component.cloudTraining);
+    expect(workoutApi.createSet).not.toHaveBeenCalled();
+  }));
+
+  it('uses only the latest rapid edit and creates the set once', fakeAsync(() => {
+    component.cloudTraining = cloudTraining([{ clientId: 'one-client-id', setNumber: 1, reps: 8, weight: 40, rpe: null, persisted: null }]);
+    const exercise = component.cloudTraining.exercises[0];
+    workoutApi.createSet.and.callFake((_workoutId, _exerciseId, request) => of({ id: 'server-set', clientId: request.clientId ?? null, setNumber: request.setNumber, weight: request.weight, reps: request.reps, rpe: request.rpe ?? null }));
+
+    component.onCloudSetChange(exercise, 0);
+    tick(300);
+    exercise.sets[0].weight = 42.5;
+    component.onCloudSetChange(exercise, 0);
+    tick(300);
+    exercise.sets[0].reps = 9;
+    component.onCloudSetChange(exercise, 0);
+    tick(600);
+    flushMicrotasks();
+
+    expect(workoutApi.createSet).toHaveBeenCalledTimes(1);
+    expect(workoutApi.createSet.calls.mostRecent().args[2]).toEqual(jasmine.objectContaining({ clientId: 'one-client-id', weight: 42.5, reps: 9 }));
+    expect(exercise.sets[0].weight).toBe(42.5);
+    expect(exercise.sets[0].reps).toBe(9);
+  }));
+
+  it('does not let a stale debounce start a second request or overwrite the latest edit', fakeAsync(() => {
+    component.cloudTraining = cloudTraining([{ clientId: 'race-safe', setNumber: 1, reps: 8, weight: 50, rpe: null, persisted: null }]);
+    const exercise = component.cloudTraining.exercises[0];
+    const response = new Subject<ReturnType<typeof cloudSet>>();
+    workoutApi.createSet.and.returnValue(response);
+
+    component.onCloudSetChange(exercise, 0);
+    tick(400);
+    exercise.sets[0].weight = 55;
+    component.onCloudSetChange(exercise, 0);
+    tick(600);
+    flushMicrotasks();
+
+    expect(workoutApi.createSet).toHaveBeenCalledTimes(1);
+    expect(workoutApi.createSet.calls.mostRecent().args[2].weight).toBe(55);
+    response.next({ ...cloudSet(1, 8, 55), clientId: 'race-safe' });
+    response.complete();
+    flushMicrotasks();
+    expect(exercise.sets[0].weight).toBe(55);
+  }));
+
+  it('retries a pending create with the same client identity and cannot duplicate it', async () => {
+    component.cloudTraining = cloudTraining([{ clientId: 'idempotent', setNumber: 1, reps: 8, weight: 50, rpe: null, persisted: null }]);
+    const exercise = component.cloudTraining.exercises[0];
+    workoutApi.createSet.and.returnValues(
+      throwError(() => new HttpErrorResponse({ status: 0 })),
+      of({ ...cloudSet(1, 8, 50), clientId: 'idempotent' }),
+    );
+
+    await component.saveCloudSet(exercise, 0);
+    await component.saveCloudSet(exercise, 0);
+    await component.saveCloudSet(exercise, 0);
+
+    expect(workoutApi.createSet).toHaveBeenCalledTimes(2);
+    expect(workoutApi.createSet.calls.allArgs().map(args => args[2].clientId)).toEqual(['idempotent', 'idempotent']);
+    expect(exercise.sets[0].persisted?.id).toBe('set-1');
+  });
+
+  it('shows pending sync feedback and removes the normal per-set Save button', () => {
+    component.cloudTraining = cloudTraining([{ clientId: 'pending', setNumber: 1, reps: 8, weight: 50, rpe: null, persisted: null, syncState: 'pending' }]);
+    fixture.detectChanges();
+
+    const row = fixture.nativeElement.querySelector('.cloud-set') as HTMLElement;
+    expect(row.textContent).toContain('Pendiente de sincronizar');
+    expect(Array.from(row.querySelectorAll('button')).some(button => button.textContent?.trim() === 'Guardar')).toBeFalse();
+  });
+
+  it('keeps confirmed sets immutable because the backend has no set update endpoint', async () => {
+    component.cloudTraining = cloudTraining([{ clientId: 'saved', setNumber: 1, reps: 8, weight: 50, rpe: null, persisted: cloudSet(1, 8, 50), syncState: 'saved' }]);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const inputs = fixture.nativeElement.querySelectorAll('.cloud-set input') as NodeListOf<HTMLInputElement>;
+    expect(Array.from(inputs).every(input => input.disabled)).toBeTrue();
+    expect(fixture.nativeElement.querySelector('.cloud-set')?.textContent).toContain('Guardado');
   });
 
   it('cancels a local workout without creating history or touching unrelated data', async () => {

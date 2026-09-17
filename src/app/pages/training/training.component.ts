@@ -1,7 +1,8 @@
-import { AfterViewInit, ChangeDetectionStrategy, ChangeDetectorRef, Component, effect, ElementRef, inject, NgZone, OnDestroy, OnInit, ViewChild } from '@angular/core';
+import { AfterViewInit, ChangeDetectionStrategy, ChangeDetectorRef, Component, DestroyRef, effect, ElementRef, inject, NgZone, OnDestroy, OnInit, ViewChild } from '@angular/core';
 import { Router } from '@angular/router';
 import { FormsModule } from '@angular/forms';
-import { firstValueFrom } from 'rxjs';
+import { concatMap, debounceTime, firstValueFrom, from, groupBy, mergeMap, Subject } from 'rxjs';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { HttpErrorResponse } from '@angular/common/http';
 import { ActiveTraining } from './training.model';
 import { ActiveTrainingRepository, CloudActiveTrainingRepository, WorkoutHistoryRepository, SelectedRoutineRepository, RoutinesRepository } from '../../data/active-training.repository';
@@ -36,8 +37,13 @@ export class TrainingComponent implements OnInit, AfterViewInit, OnDestroy {
   private clock: ReturnType<typeof setInterval> | null = null;
   private collapseObserver: IntersectionObserver | null = null;
   private dialogTrigger: HTMLElement | null = null;
+  private readonly cloudSetChanges = new Subject<{ exercise: CloudActiveExercise; setIndex: number }>();
+  private readonly cloudSetRetryTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  private readonly cloudSetRetryAttempts = new Map<string, number>();
+  private readonly onlineListener = () => this.retryPendingCloudSets();
   private readonly zone = inject(NgZone);
   private readonly cdr = inject(ChangeDetectorRef);
+  private readonly destroyRef = inject(DestroyRef);
   t = inject(TranslationService);
   private readonly auth = inject(AuthSessionService);
   private readonly workoutApi = inject(WorkoutApiService);
@@ -48,6 +54,15 @@ export class TrainingComponent implements OnInit, AfterViewInit, OnDestroy {
   private cloudBenchmarks: BenchmarkIndex = new Map();
 
   constructor(private router: Router) {
+    this.cloudSetChanges.pipe(
+      groupBy(change => change.exercise.sets[change.setIndex]?.clientId),
+      mergeMap(changes => changes.pipe(
+        debounceTime(600),
+        concatMap(change => from(this.saveCloudSet(change.exercise, change.setIndex))),
+      )),
+      takeUntilDestroyed(this.destroyRef),
+    ).subscribe();
+    globalThis.addEventListener?.('online', this.onlineListener);
     effect(() => {
       if (!this.auth.isAuthenticated() || this.loading) return;
       if (this.cloudTraining) void this.refreshCloudTraining(this.cloudTraining);
@@ -106,6 +121,9 @@ export class TrainingComponent implements OnInit, AfterViewInit, OnDestroy {
     this.clock = null;
     this.collapseObserver?.disconnect();
     this.collapseObserver = null;
+    for (const timer of this.cloudSetRetryTimers.values()) clearTimeout(timer);
+    this.cloudSetRetryTimers.clear();
+    globalThis.removeEventListener?.('online', this.onlineListener);
   }
 
   private startClock(): void {
@@ -209,6 +227,7 @@ export class TrainingComponent implements OnInit, AfterViewInit, OnDestroy {
       await CloudActiveTrainingRepository.save(fresh);
       await this.loadCloudBenchmarks(fresh.workoutId);
     } catch (error) { this.cloudError = cloudErrorMessage(error); }
+    finally { this.retryPendingCloudSets(); }
   }
 
   /** The API has no per-exercise history endpoint, so paginate workouts and match by stable exercise UUID. */
@@ -268,17 +287,69 @@ export class TrainingComponent implements OnInit, AfterViewInit, OnDestroy {
   async onSetChange() { if (this.training) await ActiveTrainingRepository.save(this.training); }
   async onCloudChange() { if (this.cloudTraining) await CloudActiveTrainingRepository.save(this.cloudTraining); }
   addCloudSet(exercise: CloudActiveExercise): void { exercise.sets.push(newCloudSetDraft(exercise)); void this.onCloudChange(); }
-  isCloudSetComplete(set: { reps: number | null; weight: number | null }): boolean { return set.reps !== null && set.reps >= 1 && set.weight !== null && set.weight >= 0; }
+  isCloudSetComplete(set: { reps: number | null; weight: number | null }): boolean {
+    return Number.isInteger(set.reps) && (set.reps ?? 0) >= 1
+      && typeof set.weight === 'number' && Number.isFinite(set.weight) && set.weight >= 0 && set.weight <= 9999.99;
+  }
+  onCloudSetChange(exercise: CloudActiveExercise, setIndex: number): void {
+    const set = exercise.sets[setIndex];
+    if (!set || set.persisted || set.saving) return;
+    set.syncState = 'idle'; delete set.saveError;
+    void this.onCloudChange();
+    if (this.isCloudSetComplete(set)) this.cloudSetChanges.next({ exercise, setIndex });
+  }
+  saveCloudSetOnBlur(exercise: CloudActiveExercise, setIndex: number): void {
+    const set = exercise.sets[setIndex];
+    if (set && !set.persisted && !set.saving && this.isCloudSetComplete(set)) void this.saveCloudSet(exercise, setIndex);
+  }
   async saveCloudSet(exercise: CloudActiveExercise, setIndex: number): Promise<void> {
     const training = this.cloudTraining;
     const set = exercise.sets[setIndex];
-    if (!training || !set || set.persisted || !this.isCloudSetComplete(set)) return;
-    set.saving = true; this.cloudError = null; await this.onCloudChange();
+    if (!training || !set || set.persisted || set.saving || !this.isCloudSetComplete(set)) return;
+    this.clearCloudSetRetry(set.clientId);
+    set.saving = true; set.syncState = 'saving'; delete set.saveError; this.cloudError = null; await this.onCloudChange();
     try {
       const persisted = await firstValueFrom(this.workoutApi.createSet(training.workoutId, exercise.id, { clientId: set.clientId, setNumber: set.setNumber, weight: Number(set.weight), reps: Number(set.reps), rpe: set.rpe }));
-      set.persisted = persisted; set.setNumber = persisted.setNumber; set.reps = persisted.reps; set.weight = persisted.weight; set.rpe = persisted.rpe;
-    } catch (error) { this.cloudError = cloudErrorMessage(error); }
+      set.persisted = persisted; set.setNumber = persisted.setNumber; set.reps = persisted.reps; set.weight = persisted.weight; set.rpe = persisted.rpe; set.syncState = 'saved';
+      this.cloudSetRetryAttempts.delete(set.clientId);
+    } catch (error) {
+      if (isTransientSaveError(error)) {
+        set.syncState = 'pending';
+        this.scheduleCloudSetRetry(exercise, setIndex);
+      } else {
+        set.syncState = 'error';
+        set.saveError = cloudErrorMessage(error);
+      }
+    }
     finally { set.saving = false; await this.onCloudChange(); }
+  }
+  retryCloudSet(exercise: CloudActiveExercise, setIndex: number): void {
+    const set = exercise.sets[setIndex];
+    if (!set || set.persisted || set.saving || !this.isCloudSetComplete(set)) return;
+    set.syncState = 'idle'; delete set.saveError;
+    void this.saveCloudSet(exercise, setIndex);
+  }
+  private retryPendingCloudSets(): void {
+    for (const exercise of this.cloudTraining?.exercises ?? []) exercise.sets.forEach((set, setIndex) => {
+      if (!set.persisted && !set.saving && this.isCloudSetComplete(set)) this.cloudSetChanges.next({ exercise, setIndex });
+    });
+  }
+  private scheduleCloudSetRetry(exercise: CloudActiveExercise, setIndex: number): void {
+    const set = exercise.sets[setIndex];
+    if (!set || this.cloudSetRetryTimers.has(set.clientId)) return;
+    const attempt = (this.cloudSetRetryAttempts.get(set.clientId) ?? 0) + 1;
+    this.cloudSetRetryAttempts.set(set.clientId, attempt);
+    // ponytail: retries are in-memory and capped at 30s; Dexie restores the pending draft after reload.
+    const timer = setTimeout(() => {
+      this.cloudSetRetryTimers.delete(set.clientId);
+      if (set.syncState === 'pending') void this.saveCloudSet(exercise, setIndex);
+    }, Math.min(30_000, 5_000 * 2 ** Math.min(attempt - 1, 3)));
+    this.cloudSetRetryTimers.set(set.clientId, timer);
+  }
+  private clearCloudSetRetry(clientId: string): void {
+    const timer = this.cloudSetRetryTimers.get(clientId);
+    if (timer) clearTimeout(timer);
+    this.cloudSetRetryTimers.delete(clientId);
   }
   async saveCloudNotes(): Promise<void> {
     if (!this.cloudTraining) return;
@@ -321,7 +392,7 @@ export class TrainingComponent implements OnInit, AfterViewInit, OnDestroy {
       this.accountSync.notifyPendingWork();
       await ActiveTrainingRepository.clear(); await SelectedRoutineRepository.clear(); this.router.navigate(['/home']); return;
     }
-    if (!this.cloudTraining || this.hasUnsubmittedCloudSets()) { if (this.hasUnsubmittedCloudSets()) this.cloudError = 'Guarda o elimina los borradores de series antes de finalizar.'; return; }
+    if (!this.cloudTraining || this.hasUnsubmittedCloudSets()) { if (this.hasUnsubmittedCloudSets()) this.cloudError = 'Hay series pendientes de sincronizar antes de finalizar.'; return; }
     this.cloudSaving = true; this.cloudError = null;
     try {
       // PATCH completed:true is the documented completion action; server supplies completedAt and preserves startedAt.
@@ -361,4 +432,8 @@ function cloudErrorMessage(error: unknown): string {
   if (!(error instanceof HttpErrorResponse) || error.status === 0 || error.status >= 500) return 'No se pudo conectar. No se ha descartado ningún dato; inténtalo de nuevo.';
   if (error instanceof HttpErrorResponse && error.status === 400) return 'No se pudo guardar la serie. Revisa repeticiones, peso, RPE y número de serie.';
   return 'No se pudo guardar el entrenamiento.';
+}
+
+function isTransientSaveError(error: unknown): boolean {
+  return error instanceof HttpErrorResponse && (error.status === 0 || error.status === 408 || error.status === 429 || error.status >= 500);
 }

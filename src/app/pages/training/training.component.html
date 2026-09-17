@@ -39,23 +39,28 @@
     }
 
     @if (cloudTraining) {
-      <p class="source-notice">Las series guardadas quedan bloqueadas. Los borradores siguen en este dispositivo si se pierde la conexión.</p>
+      <p class="source-notice">Las series se guardan automáticamente. Tras confirmarse quedan bloqueadas; si se pierde la conexión, el borrador sigue en este dispositivo.</p>
       @if (cloudError) { <p class="session-error" role="alert">{{ cloudError }}</p> }
       <div class="exercise-ledger">
         @for (exercise of cloudTraining.exercises; track exercise.id; let exerciseIndex = $index) {
           <section class="exercise-log">
             <header class="exercise-log__header"><span>{{ exerciseNumber(exerciseIndex) }}</span><div><h2>{{ exercise.name }}</h2><p>{{ exercise.sets.length }} series @if (exercise.notes) { · {{ exercise.notes }} }</p></div></header>
             <div class="set-table set-table--cloud">
-              <div class="set-table__head" aria-hidden="true"><span>SET</span><span>ANTERIOR</span><span>KG</span><span>REPS</span><span>RPE</span><span></span></div>
+              <div class="set-table__head" aria-hidden="true"><span>SET</span><span>ANTERIOR</span><span>KG</span><span>REPS</span><span>ESTADO</span></div>
               @for (set of exercise.sets; track set.clientId; let setIndex = $index) {
                 @let last = getCloudLastSetReference(exercise.exerciseId, set.setNumber);
                 <div class="cloud-set" [class.cloud-set--saved]="set.persisted" [class.set-row--next]="isNextCloudSet(exercise, setIndex)">
                   <span class="set-row__number">{{ set.setNumber }}</span>
                   <span class="set-row__previous">@if (last) { <small>Anterior</small><b>{{ last.weight }} × {{ last.reps }}</b> } @else { <small>Anterior</small><b>—</b> }</span>
-                  <label><span class="sr-only">Peso</span><input [(ngModel)]="set.weight" (ngModelChange)="onCloudChange()" [disabled]="!!set.persisted" type="number" inputmode="decimal" min="0" step="0.01" placeholder="—"></label>
-                  <label><span class="sr-only">Repeticiones</span><input [(ngModel)]="set.reps" (ngModelChange)="onCloudChange()" [disabled]="!!set.persisted" type="number" inputmode="numeric" min="1" placeholder="—"></label>
-                  <label class="rpe-input"><span class="sr-only">RPE</span><input [(ngModel)]="set.rpe" (ngModelChange)="onCloudChange()" [disabled]="!!set.persisted" type="number" inputmode="decimal" min="0" max="10" step="0.1" placeholder="—"></label>
-                  @if (!set.persisted) { <button type="button" (click)="saveCloudSet(exercise, setIndex)" [disabled]="set.saving || !isCloudSetComplete(set)" [attr.aria-label]="set.saving ? 'Guardando serie ' + set.setNumber : 'Guardar serie ' + set.setNumber">{{ set.saving ? 'Guardando…' : 'Guardar' }}</button> } @else { <span class="set-row__state" aria-label="Serie guardada"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 12 4 4 8-9"/></svg></span> }
+                  <label><span class="sr-only">Peso</span><input [(ngModel)]="set.weight" (ngModelChange)="onCloudSetChange(exercise, setIndex)" (blur)="saveCloudSetOnBlur(exercise, setIndex)" [disabled]="set.persisted !== null || set.saving === true" type="number" inputmode="decimal" min="0" max="9999.99" step="0.01" placeholder="—"></label>
+                  <label><span class="sr-only">Repeticiones</span><input [(ngModel)]="set.reps" (ngModelChange)="onCloudSetChange(exercise, setIndex)" (blur)="saveCloudSetOnBlur(exercise, setIndex)" [disabled]="set.persisted !== null || set.saving === true" type="number" inputmode="numeric" min="1" step="1" placeholder="—"></label>
+                  <span class="set-save-state" aria-live="polite">
+                    @if (set.saving) { <span>Guardando…</span> }
+                    @else if (set.persisted) { <span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 12 4 4 8-9"/></svg>Guardado</span> }
+                    @else if (set.syncState === 'pending') { <span>Pendiente de sincronizar</span> }
+                    @else if (set.syncState === 'error') { <span>Error al guardar</span><button type="button" (click)="retryCloudSet(exercise, setIndex)">Reintentar</button> }
+                    @else { <span class="sr-only">Borrador sin guardar</span><i aria-hidden="true"></i> }
+                  </span>
                 </div>
               }
             </div>
