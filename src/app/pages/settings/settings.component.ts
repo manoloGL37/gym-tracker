@@ -69,11 +69,12 @@ export class SettingsComponent implements OnInit {
   resolving = signal<{ key: string; name: string } | null>(null);
   migrationSearch = '';
   migrationCatalog = signal<ExerciseResponse[]>([]);
+  private migrationLoadVersion = 0;
 
   constructor() {
     effect(() => {
       this.auth.currentUser();
-      this.accountSync.status();
+      this.accountSync.state();
       void this.loadMigration();
     });
   }
@@ -84,9 +85,11 @@ export class SettingsComponent implements OnInit {
   }
 
   async loadMigration(): Promise<void> {
+    const requestVersion = ++this.migrationLoadVersion;
     const accountId = this.auth.currentUser()?.id;
     if (!accountId) { this.unresolvedExercises.set([]); return; }
-    this.unresolvedExercises.set(await this.migration.unresolvedReferences(accountId));
+    const unresolved = await this.migration.unresolvedReferences(accountId);
+    if (requestVersion === this.migrationLoadVersion) this.unresolvedExercises.set(unresolved);
   }
 
   async openExerciseResolution(reference: { key: string; name: string }): Promise<void> {
@@ -125,19 +128,20 @@ export class SettingsComponent implements OnInit {
   migrationExerciseName(exercise: ExerciseResponse): string { return getExerciseName(exercise, this.t.lang()); }
 
   syncStatusText(): string {
-    const completed = this.accountSync.completed();
-    const total = this.accountSync.total();
-    switch (this.accountSync.status()) {
-      case 'syncing': return total ? `Sincronizando ejercicios · ${completed}/${total}` : 'Sincronizando ejercicios';
+    const state = this.accountSync.state();
+    switch (state.status) {
+      case 'syncing': return state.total ? `Sincronizando · ${state.completed} de ${state.total}` : 'Sincronizando';
       case 'retrying': return 'Reintentando sincronización...';
       case 'waiting': return 'Esperando conexión';
-      case 'attention': {
-        const count = this.accountSync.attention();
-        return count === 1 ? '1 elemento necesita tu atención' : `${count} elementos necesitan tu atención`;
-      }
-      case 'synced': return 'Todo lo compatible está sincronizado';
+      case 'attention': return state.attention === 1 ? '1 elemento necesita tu atención' : `${state.attention} elementos necesitan tu atención`;
+      case 'synced': return 'Todo sincronizado';
       default: return 'Preparando sincronización';
     }
+  }
+
+  syncProgressPercent(): number | null {
+    const { total, completed } = this.accountSync.state();
+    return total ? Math.round((completed / total) * 100) : null;
   }
 
   // Manual restore from server

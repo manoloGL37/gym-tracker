@@ -2,7 +2,7 @@ import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { AuthSessionService } from '../../auth/auth-session.service';
-import { AccountSyncService } from '../../migration/account-sync.service';
+import { AccountSyncService, AccountSyncStatus } from '../../migration/account-sync.service';
 import { LocalToCloudMigrationService } from '../../migration/local-to-cloud-migration.service';
 import { BackupService } from '../../services/backup.service';
 import { TranslationService } from '../../services/translation.service';
@@ -11,8 +11,11 @@ import { SettingsComponent } from './settings.component';
 describe('SettingsComponent account data status', () => {
   let fixture: ComponentFixture<SettingsComponent>;
   let migration: jasmine.SpyObj<LocalToCloudMigrationService>;
-  const status = signal<'synced' | 'attention' | 'syncing'>('synced');
+  const status = signal<AccountSyncStatus>('synced');
   const attention = signal(0);
+  const completed = signal(3);
+  const total = signal(3);
+  const pending = signal(0);
   const authenticated = signal(true);
   const reconnecting = signal(false);
   const currentUser = signal<{ id: string; email: string } | null>({ id: 'account-a', email: 'athlete@example.com' });
@@ -20,6 +23,9 @@ describe('SettingsComponent account data status', () => {
   beforeEach(async () => {
     status.set('synced');
     attention.set(0);
+    completed.set(3);
+    total.set(3);
+    pending.set(0);
     authenticated.set(true);
     reconnecting.set(false);
     currentUser.set({ id: 'account-a', email: 'athlete@example.com' });
@@ -36,7 +42,8 @@ describe('SettingsComponent account data status', () => {
           currentUser, logout: () => Promise.resolve(),
         } },
         { provide: AccountSyncService, useValue: {
-          status, completed: signal(3), total: signal(3), attention, retryNow: jasmine.createSpy('retryNow'),
+          status, completed, total, pending, attention, retryNow: jasmine.createSpy('retryNow'),
+          state: () => ({ status: status(), completed: completed(), total: total(), pending: pending(), remaining: total() - completed(), attention: attention() }),
         } },
         { provide: LocalToCloudMigrationService, useValue: migration },
         { provide: BackupService, useValue: {} },
@@ -54,7 +61,7 @@ describe('SettingsComponent account data status', () => {
     fixture.detectChanges();
     const text = fixture.nativeElement.textContent as string;
     expect(text).toContain('Tus datos');
-    expect(text).toContain('Todo lo compatible está sincronizado');
+    expect(text).toContain('Todo sincronizado');
     expect(text).not.toContain('Guardar datos en tu cuenta');
     expect(text).not.toContain('Ahora no');
   });
@@ -72,11 +79,25 @@ describe('SettingsComponent account data status', () => {
 
   it('renders real synchronization progress immediately', async () => {
     status.set('syncing');
+    completed.set(3); total.set(5); pending.set(2);
     fixture.detectChanges();
     await fixture.whenStable();
     fixture.detectChanges();
-    expect(fixture.nativeElement.textContent).toContain('Sincronizando ejercicios · 3/3');
+    expect(fixture.nativeElement.textContent).toContain('Sincronizando · 3 de 5');
+    expect(fixture.nativeElement.querySelector('[role="progressbar"]').getAttribute('aria-valuenow')).toBe('60');
     expect(fixture.nativeElement.querySelector('.syncing')).not.toBeNull();
+  });
+
+  it('updates its open view when shared progress changes without a reload', async () => {
+    status.set('syncing'); completed.set(1); total.set(3); pending.set(2);
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    completed.set(2); pending.set(1);
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.textContent).toContain('Sincronizando · 2 de 3');
+    expect(fixture.nativeElement.querySelector('[role="progressbar"]').getAttribute('aria-valuenow')).toBe('67');
   });
 
   it('shows reconnecting state instead of guest actions while restoration is pending', async () => {
