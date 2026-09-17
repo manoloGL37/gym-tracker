@@ -56,10 +56,14 @@
 .exercise-notes summary span { color:var(--quiet); font-size:.58rem; }
 .exercise-notes p { margin:0 0 .6rem; padding:.65rem; background:var(--paper-low); color:var(--muted); font-size:.68rem; }
 .exercise-notes textarea { width:100%; padding:.7rem; resize:vertical; }
-.set-table--cloud .set-table__head,.cloud-set { display:grid; grid-template-columns:1.7rem minmax(3.7rem,.9fr) minmax(2.9rem,.7fr) minmax(2.9rem,.7fr) minmax(2.7rem,.6fr) minmax(2.8rem,.75fr); gap:.25rem; align-items:center; }
+.set-table--cloud .set-table__head,.cloud-set { display:grid; grid-template-columns:1.7rem minmax(3.7rem,.9fr) minmax(2.9rem,.7fr) minmax(2.9rem,.7fr) minmax(4.4rem,.9fr); gap:.25rem; align-items:center; }
 .cloud-set { position:relative; min-height:4.25rem; border-top:1px solid var(--hairline); }
-.cloud-set button { min-height:2.75rem; border:0; border-radius:.35rem; padding:.25rem; background:var(--ink); color:white; font-size:.55rem; font-weight:800; }
 .cloud-set--saved { color:var(--success); }.cloud-set--saved input { background:#e1ebe6; color:var(--success); }
+.set-save-state { display:flex; min-width:0; flex-direction:column; align-items:flex-end; gap:.2rem; color:var(--muted); font-size:.55rem; font-weight:760; line-height:1.15; text-align:right; }
+.set-save-state>span { display:flex; align-items:center; justify-content:flex-end; gap:.2rem; overflow-wrap:anywhere; }
+.set-save-state svg { width:.9rem; flex:0 0 auto; fill:none; stroke:var(--success); stroke-width:2.4; stroke-linecap:round; stroke-linejoin:round; }
+.set-save-state i { width:.35rem; height:.35rem; border-radius:50%; background:var(--quiet); }
+.set-save-state button { min-height:1.5rem; border:0; padding:0; background:transparent; color:var(--danger); font:inherit; text-decoration:underline; text-underline-offset:.15rem; }
 .add-set { min-height:2.8rem; margin:.65rem 0 0 2.75rem; border:0; background:transparent; color:var(--signal-dark); font-size:.7rem; font-weight:780; }
 .session-notes { display:grid; gap:.55rem; margin:2rem 1rem 0; padding-top:1.25rem; border-top:1px solid var(--hairline-strong); }
 .session-notes label { font-family:var(--numeric-font); font-size:1rem; font-weight:800; }
@@ -73,8 +77,8 @@
   .session-commandbar--collapsed { grid-template-columns:minmax(0,1fr) auto 8rem; }
   .session-content { padding:2.2rem 2rem 4rem; }.session-instruction,.source-notice,.session-error { margin-inline:0; }
   .exercise-log { padding-inline:0; }.exercise-log__header { grid-template-columns:3.5rem minmax(0,1fr); }.exercise-notes { margin-left:4.25rem; }
-  .set-table { margin-left:4.25rem; }.set-table__head,.set-row { grid-template-columns:2.4rem minmax(7rem,1fr) minmax(5rem,.7fr) minmax(5rem,.7fr) 2.4rem; }.set-table--cloud .set-table__head,.cloud-set { grid-template-columns:2.2rem minmax(7rem,1fr) repeat(3,minmax(4.3rem,.65fr)) minmax(4.4rem,.7fr); }
+  .set-table { margin-left:4.25rem; }.set-table__head,.set-row { grid-template-columns:2.4rem minmax(7rem,1fr) minmax(5rem,.7fr) minmax(5rem,.7fr) 2.4rem; }.set-table--cloud .set-table__head,.cloud-set { grid-template-columns:2.2rem minmax(7rem,1fr) repeat(2,minmax(4.3rem,.65fr)) minmax(6.5rem,.8fr); }
   .session-notes { margin-inline:4.25rem 0; }.session-finish { right:1.5rem; bottom:1.5rem; left:auto; width:23rem; padding:.4rem; border:1px solid var(--hairline); box-shadow:var(--shadow-card); }
 }
-@media (max-width:23rem) { .set-table__head,.set-row { grid-template-columns:1.6rem 3.65rem minmax(2.9rem,1fr) minmax(2.9rem,1fr) 1.65rem; }.set-table--cloud .set-table__head,.cloud-set { grid-template-columns:1.4rem 3.2rem repeat(3,minmax(2.4rem,1fr)) 2.55rem; }.set-row input,.cloud-set input { font-size:1rem; } }
+@media (max-width:23rem) { .set-table__head,.set-row { grid-template-columns:1.6rem 3.65rem minmax(2.9rem,1fr) minmax(2.9rem,1fr) 1.65rem; }.set-table--cloud .set-table__head,.cloud-set { grid-template-columns:1.4rem 3.2rem repeat(2,minmax(2.4rem,1fr)) minmax(3.7rem,.8fr); }.set-row input,.cloud-set input { font-size:1rem; } }
 @media (prefers-reduced-motion:reduce) { .set-row--done .set-row__state,.cloud-set--saved .set-row__state { animation:none; } }

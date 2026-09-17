@@ -15,6 +15,8 @@ export interface CloudSetDraft {
   rpe: number | null;
   persisted: WorkoutSetResponse | null;
   saving?: boolean;
+  syncState?: 'idle' | 'saving' | 'saved' | 'pending' | 'error';
+  saveError?: string;
 }
 
 export interface CloudActiveExercise {
@@ -62,14 +64,14 @@ export function cloudExerciseFromResponse(exercise: WorkoutExerciseResponse, nam
   return {
     id: exercise.id, exerciseId: exercise.exerciseId, position: exercise.position,
     name: names.get(exercise.exerciseId) ?? 'Ejercicio sin nombre', notes: exercise.notes,
-    sets: persisted.map(set => ({ clientId: set.clientId ?? crypto.randomUUID(), setNumber: set.setNumber, reps: set.reps, weight: set.weight, rpe: set.rpe, persisted: set })),
+    sets: persisted.map(set => ({ clientId: set.clientId ?? crypto.randomUUID(), setNumber: set.setNumber, reps: set.reps, weight: set.weight, rpe: set.rpe, persisted: set, syncState: 'saved' })),
   };
 }
 
 /** Adds only an editable draft. Existing cloud sets cannot be changed because the API has no PATCH/DELETE set route. */
 export function newCloudSetDraft(exercise: CloudActiveExercise): CloudSetDraft {
   const nextSetNumber = exercise.sets.reduce((max, set) => Math.max(max, set.setNumber), 0) + 1;
-  return { clientId: crypto.randomUUID(), setNumber: nextSetNumber, reps: null, weight: null, rpe: null, persisted: null };
+  return { clientId: crypto.randomUUID(), setNumber: nextSetNumber, reps: null, weight: null, rpe: null, persisted: null, syncState: 'idle' };
 }
 
 /** Serializes a browser Date as the API's zone-less Java LocalDateTime; it intentionally never appends Z. */
