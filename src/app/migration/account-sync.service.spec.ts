@@ -1,3 +1,4 @@
+import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { AccountSyncService } from './account-sync.service';
 import { LocalToCloudMigrationService } from './local-to-cloud-migration.service';
@@ -9,6 +10,7 @@ describe('AccountSyncService', () => {
   beforeEach(() => {
     jasmine.clock().install();
     migration = jasmine.createSpyObj<LocalToCloudMigrationService>('LocalToCloudMigrationService', ['start', 'getProgress']);
+    Object.assign(migration, { changes: signal(0) });
     migration.start.and.resolveTo({} as any);
     migration.getProgress.and.resolveTo({ completed: 3, total: 3, pending: 0, pendingWorkouts: 0, attention: 0 });
     TestBed.configureTestingModule({ providers: [
@@ -33,8 +35,7 @@ describe('AccountSyncService', () => {
     expect(service.status()).toBe('syncing');
     expect(migration.start).toHaveBeenCalledOnceWith('account-a');
     release();
-    await Promise.resolve();
-    await Promise.resolve();
+    await flushPromises();
     expect(service.completed()).toBe(3);
     expect(service.total()).toBe(3);
     expect(service.status()).toBe('synced');
@@ -52,6 +53,24 @@ describe('AccountSyncService', () => {
     expect(service.status()).toBe('syncing');
     expect(service.completed()).toBe(1);
     expect(service.total()).toBe(3);
+    release();
+  });
+
+  it('updates global progress after each confirmed ledger change', async () => {
+    let release!: () => void;
+    migration.getProgress.and.returnValues(
+      Promise.resolve({ completed: 1, total: 3, pending: 2, pendingWorkouts: 1, attention: 0 }),
+      Promise.resolve({ completed: 2, total: 3, pending: 1, pendingWorkouts: 1, attention: 0 }),
+    );
+    migration.start.and.returnValue(new Promise<void>(resolve => release = resolve) as any);
+
+    service.start('account-a');
+    await flushPromises();
+    (migration.changes as any).update((value: number) => value + 1);
+    TestBed.flushEffects();
+    await flushPromises();
+
+    expect(service.state()).toEqual(jasmine.objectContaining({ completed: 2, total: 3, pending: 1, remaining: 1 }));
     release();
   });
 

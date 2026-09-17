@@ -1,4 +1,4 @@
-import { Injectable, Injector, inject } from '@angular/core';
+import { Injectable, Injector, inject, signal } from '@angular/core';
 import { HttpErrorResponse } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 import { ActiveTrainingRepository, db, Routine, RoutinesRepository, WorkoutHistoryRepository } from '../data/active-training.repository';
@@ -23,6 +23,9 @@ export class LocalToCloudMigrationService {
   private get exercises(): ExerciseApiService { return this.injector.get(ExerciseApiService); }
   private get routinesApi(): RoutineApiService { return this.injector.get(RoutineApiService); }
   private get workoutsApi(): WorkoutApiService { return this.injector.get(WorkoutApiService); }
+
+  /** Changes after a confirmed ledger write, including each individual resource. */
+  readonly changes = signal(0);
 
   async getLedger(accountId: string): Promise<MigrationLedger> {
     const existing = await db.migrationLedgers.get(accountId);
@@ -334,7 +337,11 @@ export class LocalToCloudMigrationService {
     return localExerciseReferences(await RoutinesRepository.getAll()).find(reference => reference.key === key) ?? null;
   }
 
-  private async save(ledger: MigrationLedger): Promise<void> { ledger.updatedAt = new Date().toISOString(); await db.migrationLedgers.put(ledger); }
+  private async save(ledger: MigrationLedger): Promise<void> {
+    ledger.updatedAt = new Date().toISOString();
+    await db.migrationLedgers.put(ledger);
+    this.changes.update(value => value + 1);
+  }
 
   private async getOwnership(): Promise<MigrationOwnership> {
     // ponytail: ledgers are device/account bounded, so a full scan is simpler; add indexed claims if multi-user device history becomes large.
