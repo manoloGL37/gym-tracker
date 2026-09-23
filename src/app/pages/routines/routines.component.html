@@ -24,8 +24,12 @@
 
     @if (editorOpen) {
       <aside class="routine-studio" aria-labelledby="routine-editor-title">
-        <header><div><span>{{ editingLocal || editingCloud ? 'EDITANDO PLAN' : 'NUEVO PLAN' }}</span><h2 id="routine-editor-title">{{ editingLocal || editingCloud ? 'Ajusta la rutina' : 'Construye la rutina' }}</h2></div><button type="button" (click)="cancelEdit()" aria-label="Cerrar editor">×</button></header>
-        @if (isCloudEditor) {
+        <header><div><span>{{ editingRoutineName ? 'EDITANDO PLAN' : 'NUEVO PLAN' }}</span><h2 #routineEditorTitle id="routine-editor-title" tabindex="-1">{{ editingRoutineName || 'Construye la rutina' }}</h2></div><button type="button" (click)="cancelEdit()" aria-label="Cerrar editor">×</button></header>
+        @if (editorLoading) {
+          <p class="editor-loading" aria-live="polite">Abriendo {{ editingRoutineName }}…</p>
+        } @else if (error() && !editingCloud && !editingLocal) {
+          <div class="editor-load-error" role="alert"><p>No se pudo abrir esta rutina.</p><button type="button" (click)="cancelEdit()">Volver a rutinas</button></div>
+        } @else if (isCloudEditor) {
           <form (ngSubmit)="saveRoutine()" autocomplete="off">
             <label class="routine-name">Nombre<input [(ngModel)]="cloudDraft.name" name="cloudName" maxlength="150" required placeholder="Ej. Fuerza A…" autocomplete="off"></label>
             <label class="routine-description">Descripción<textarea [(ngModel)]="cloudDraft.description" name="cloudDescription" maxlength="500" rows="2" placeholder="Intención del plan…" autocomplete="off"></textarea></label>

@@ -30,6 +30,7 @@ describe('RoutinesComponent local/cloud boundary', () => {
     authenticated = signal(isAuthenticated);
     routineApi = jasmine.createSpyObj<RoutineApiService>('RoutineApiService', ['list', 'get', 'create', 'update', 'delete']);
     routineApi.list.and.returnValue(of(page));
+    routineApi.get.and.returnValue(of(cloud));
     exerciseApi = jasmine.createSpyObj<ExerciseApiService>('ExerciseApiService', ['list', 'get', 'create']);
     exerciseApi.list.and.returnValue(of({ content: [], page: 0, size: 10, totalElements: 0, totalPages: 0 }));
     exerciseApi.create.and.returnValue(of(customExercise));
@@ -71,6 +72,63 @@ describe('RoutinesComponent local/cloud boundary', () => {
     expect(routineApi.create).not.toHaveBeenCalled();
     expect(routineApi.update).not.toHaveBeenCalled();
     expect(routineApi.delete).not.toHaveBeenCalled();
+  });
+
+  it('opens the selected guest routine in the focused editor with its exercises in order', async () => {
+    await create(false);
+    const routine = {
+      ...local,
+      name: 'Pierna A',
+      exercises: [
+        { id: 'squat', name: 'Sentadilla', setsCount: 4 },
+        { id: 'curl', name: 'Curl femoral', setsCount: 3 },
+      ],
+    };
+    await component.startEdit({ source: 'local', routine });
+    fixture.detectChanges();
+    expect(component.editorOpen).toBeTrue();
+    expect(component.editingRoutineName).toBe('Pierna A');
+    expect(component.localExercises.map(exercise => exercise.id)).toEqual(['squat', 'curl']);
+    expect(fixture.nativeElement.querySelector('#routine-editor-title').textContent.trim()).toBe('Pierna A');
+    expect(fixture.nativeElement.querySelector('.program-list')).toBeTruthy();
+  });
+
+  it('uses a fresh draft when switching between guest routines', async () => {
+    await create(false);
+    await component.startEdit({ source: 'local', routine: local });
+    component.localName = 'Cambio sin guardar';
+    component.localExercises[0].name = 'No debe filtrarse';
+    const other: Routine = { id: 'other-id', name: 'Torso', exercises: [{ id: 'row', name: 'Remo', setsCount: 4 }] };
+    await component.startEdit({ source: 'local', routine: other });
+    expect(component.localName).toBe('Torso');
+    expect(component.localExercises).toEqual([{ id: 'row', name: 'Remo', setsCount: 4 }]);
+  });
+
+  it('cancelling an edit leaves the saved guest routine unchanged', async () => {
+    await create(false);
+    await component.startEdit({ source: 'local', routine: local });
+    component.localName = 'No guardar';
+    component.cancelEdit();
+    expect(component.editorOpen).toBeFalse();
+    expect(local.name).toBe('Fuerza');
+    expect(local.exercises[0].name).toBe('Press');
+  });
+
+  it('opens the requested cloud routine only after its detail draft is ready', async () => {
+    await create(true);
+    const detail: RoutineResponse = {
+      ...cloud,
+      name: 'Torso sincronizado',
+      exercises: [{ id: 'routine-exercise-id', exerciseId: 'press-id', position: 0, sets: 4, targetReps: 8, restSeconds: 90, notes: 'Controlado' }],
+    };
+    routineApi.get.and.returnValue(of(detail));
+    exerciseApi.get.and.returnValue(of({ ...customExercise, id: 'press-id', translations: [{ language: 'en', name: 'Press banca', instructions: null }] }));
+    await component.startEdit({ source: 'cloud', routine: page.content[0] });
+    fixture.detectChanges();
+    expect(component.editorLoading).toBeFalse();
+    expect(component.editingRoutineName).toBe('Movilidad');
+    expect(component.cloudDraft.name).toBe('Torso sincronizado');
+    expect(component.cloudDraft.exercises.map(exercise => exercise.exerciseId)).toEqual(['press-id']);
   });
 
   it('keeps the generated cloud clientId through a failed create retry', async () => {
