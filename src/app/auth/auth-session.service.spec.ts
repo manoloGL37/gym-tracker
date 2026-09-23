@@ -1,5 +1,5 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { TestBed } from '@angular/core/testing';
+import { fakeAsync, flushMicrotasks, TestBed, tick } from '@angular/core/testing';
 import Dexie from 'dexie';
 import { Subject, of, throwError } from 'rxjs';
 import { AuthApiService } from './auth-api.service';
@@ -93,6 +93,18 @@ describe('AuthSessionService', () => {
     expect(service.isGuest()).toBeFalse();
     expect(service.restoreAttemptFailed()).toBeTrue();
   });
+
+  it('turns a stalled restoration into a recoverable unreachable state', fakeAsync(() => {
+    api.refresh.and.returnValue(new Subject<AuthResponse>());
+
+    void service.initialize();
+    tick(15_001);
+    flushMicrotasks();
+
+    expect(service.initializationStatus()).toBe('unreachable');
+    expect(service.isGuest()).toBeFalse();
+    service.ngOnDestroy();
+  }));
 
   it('restores in the background on connectivity recovery and resumes sync', async () => {
     api.refresh.and.returnValue(throwError(() => new HttpErrorResponse({ status: 503 })));

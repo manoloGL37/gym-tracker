@@ -7,6 +7,7 @@ import { CloudActiveTraining, toBackendLocalDateTime } from '../workouts/workout
 import { MigrationLedger } from '../migration/local-to-cloud-migration.models';
 import { RoutinePageResponse } from '../routines/routine-api.models';
 import { WorkoutPageResponse } from '../workouts/workout-api.models';
+import { ExerciseListParams, ExercisePageResponse } from '../exercises/exercise-api.models';
 
 export interface Routine {
   id: string;
@@ -28,6 +29,13 @@ export interface AccountWorkoutCache {
   accountId: string;
   page: WorkoutPageResponse;
   routineNames: Record<string, string>;
+  updatedAt: string;
+}
+
+export interface AccountExerciseCatalogCache {
+  key: string;
+  accountId: string;
+  page: ExercisePageResponse;
   updatedAt: string;
 }
 
@@ -62,6 +70,7 @@ class GymTrackerDB extends Dexie {
   migrationLedgers!: Table<MigrationLedger, string>;
   accountRoutineCache!: Table<AccountRoutineCache, string>;
   accountWorkoutCache!: Table<AccountWorkoutCache, string>;
+  accountExerciseCatalogCache!: Table<AccountExerciseCatalogCache, string>;
 
   constructor() {
     super('GymTrackerDB');
@@ -90,6 +99,14 @@ class GymTrackerDB extends Dexie {
       migrationLedgers: 'accountId',
       accountRoutineCache: 'accountId',
       accountWorkoutCache: 'accountId',
+    });
+    this.version(9).stores({
+      ...stores,
+      cloudActiveTraining: 'id',
+      migrationLedgers: 'accountId',
+      accountRoutineCache: 'accountId',
+      accountWorkoutCache: 'accountId',
+      accountExerciseCatalogCache: 'key, accountId',
     });
   }
 }
@@ -214,5 +231,26 @@ export const AccountReadCacheRepository = {
   saveWorkouts(accountId: string, page: WorkoutPageResponse, routineNames: Record<string, string>) {
     return db.accountWorkoutCache.put({ accountId, page, routineNames, updatedAt: new Date().toISOString() });
   },
+  async getExercises(accountId: string, query: ExerciseListParams) {
+    if (!isDefaultCatalogQuery(query)) return undefined;
+    return db.accountExerciseCatalogCache.get(accountId);
+  },
+  async saveExercises(accountId: string, query: ExerciseListParams, page: ExercisePageResponse) {
+    // ponytail: persist one useful startup page per account; add a bounded LRU if filtered offline restore is ever required.
+    if (!isDefaultCatalogQuery(query)) return accountId;
+    return db.accountExerciseCatalogCache.put({
+      key: accountId, accountId, page, updatedAt: new Date().toISOString(),
+    });
+  },
 };
+
+function isDefaultCatalogQuery(query: ExerciseListParams): boolean {
+  return (query.page ?? 0) === 0
+    && (query.size ?? 20) === 20
+    && !query.search
+    && !query.category
+    && !query.equipment
+    && !query.muscleGroup
+    && !query.targetMuscle;
+}
 

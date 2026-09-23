@@ -1,9 +1,14 @@
 <div class="catalog-page">
   <header class="catalog-head"><div><span>BIBLIOTECA DE MOVIMIENTO</span><h1>Ejercicios</h1></div><a routerLink="/settings">Ajustes</a></header>
   <main>
-    @if (view() === 'guest') {
+    @if (view() === 'reconnecting') {
+      <section class="catalog-reconnecting" aria-live="polite" [attr.aria-busy]="auth.initializationStatus() === 'restoring'">
+        <span aria-hidden="true"></span><div><h2>{{ auth.initializationStatus() === 'unreachable' ? 'El catálogo está temporalmente sin conexión' : 'Recuperando tu catálogo' }}</h2><p>{{ auth.initializationStatus() === 'unreachable' ? 'Tus datos locales siguen disponibles. Reintentaremos en segundo plano cuando vuelva la conexión.' : 'Estamos comprobando tu sesión y preparando los ejercicios guardados.' }}</p>@if (auth.initializationStatus() === 'unreachable') { <button type="button" (click)="retryConnection()">Reintentar conexión</button> }</div>
+      </section>
+    } @else if (view() === 'guest') {
       <section class="catalog-guest"><span aria-hidden="true">GT</span><div><h2>El catálogo requiere una cuenta</h2><p>Puedes seguir creando y usando rutinas sin iniciar sesión.</p><a routerLink="/login">Iniciar sesión</a></div></section>
     } @else if (view() === 'catalog') {
+      @if (auth.isReconnecting()) { <p class="catalog-connection" aria-live="polite">{{ auth.initializationStatus() === 'unreachable' ? 'Sin conexión · mostrando el catálogo guardado.' : 'Reconectando tu cuenta · mostrando el catálogo guardado.' }} @if (auth.initializationStatus() === 'unreachable') { <button type="button" (click)="retryConnection()">Reintentar</button> }</p> }
       <section class="search-stage" aria-labelledby="search-heading"><label id="search-heading" for="catalog-search">Busca un movimiento</label><div><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4 4"/></svg><input id="catalog-search" [(ngModel)]="search" (keyup.enter)="applyFilters()" type="search" name="search" placeholder="Press, sentadilla, remo…" autocomplete="off"><button type="button" (click)="applyFilters()" [disabled]="loading()">Buscar</button></div><footer><span>@if (page(); as result) { {{ result.totalElements }} resultados }</span><button type="button" (click)="openCreate()">Crear personalizado <b aria-hidden="true">+</b></button></footer></section>
 
       <details class="filter-drawer"><summary>Filtros <span>Categoría, material y músculo</span></summary><div class="filter-grid">
@@ -21,7 +26,8 @@
 
       @if (error()) { <p class="catalog-error" role="alert">{{ error() }} <button type="button" (click)="loadPage(pageNumber)">Reintentar</button></p> }
       @if (filtersError()) { <p class="filter-error">{{ filtersError() }} Puedes seguir buscando por texto.</p> }
-      @if (loading()) { <div class="catalog-loading" aria-live="polite" aria-busy="true"><i></i><i></i><i></i><i></i><span>{{ page() ? 'Actualizando catálogo…' : 'Cargando catálogo…' }}</span></div> }
+      @if (loading() && page()) { <p class="catalog-refreshing" aria-live="polite" aria-busy="true"><span></span>Actualizando catálogo…</p> }
+      @if (loading() && !page()) { <div class="catalog-loading" aria-live="polite" aria-busy="true"><i></i><i></i><i></i><i></i><span>Cargando catálogo…</span></div> }
       @if (page(); as result) {
         @if (!result.content.length) { <section class="catalog-empty"><h2>Ningún ejercicio coincide</h2><p>Prueba otra palabra o elimina alguno de los filtros.</p><button type="button" (click)="openCreate()">Crear un ejercicio personalizado</button></section> }
         @else { <section class="result-list" aria-label="Resultados">@for (exercise of result.content; track exercise.id; let i = $index) { <button type="button" (click)="openDetail(exercise.id)"><span>{{ (result.page * result.size) + i + 1 | number:'2.0-0' }}</span><div><strong>{{ nameFor(exercise) }}</strong><small>{{ exercise.category || 'Sin categoría' }} · {{ exercise.muscleGroup || 'Grupo muscular sin indicar' }}</small></div><b>{{ exercise.source === 'USER' ? 'Personal' : 'Catálogo' }}</b><i aria-hidden="true">→</i></button> }</section> }

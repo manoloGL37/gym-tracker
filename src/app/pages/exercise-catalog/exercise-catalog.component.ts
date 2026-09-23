@@ -9,6 +9,7 @@ import { TranslationService } from '../../services/translation.service';
 import { ExerciseApiService } from '../../exercises/exercise-api.service';
 import {
   ExerciseFilterOptionsResponse,
+  ExerciseListParams,
   ExercisePageResponse,
   ExerciseResponse,
   ExerciseTranslation,
@@ -23,8 +24,9 @@ import {
   isCustomExerciseDraftValid,
   toCreateExerciseRequest,
 } from '../../exercises/exercise-domain';
+import { AccountReadCacheRepository } from '../../data/active-training.repository';
 
-type CatalogView = 'guest' | 'catalog' | 'detail' | 'form';
+type CatalogView = 'reconnecting' | 'guest' | 'catalog' | 'detail' | 'form';
 
 @Component({
   selector: 'app-exercise-catalog',
@@ -38,7 +40,7 @@ export class ExerciseCatalogComponent {
   readonly t = inject(TranslationService);
   private readonly api = inject(ExerciseApiService);
 
-  readonly view = signal<CatalogView>('guest');
+  readonly view = signal<CatalogView>('reconnecting');
   readonly page = signal<ExercisePageResponse | null>(null);
   readonly filterOptions = signal<ExerciseFilterOptionsResponse | null>(null);
   readonly detail = signal<ExerciseResponse | null>(null);
@@ -57,17 +59,30 @@ export class ExerciseCatalogComponent {
   pageNumber = 0;
   editingExercise: ExerciseResponse | null = null;
   private preservedTranslations: ExerciseTranslation[] = [];
+  private visibleAccountId: string | null = null;
+  private authStateVersion = 0;
+  private pageRequestVersion = 0;
+  private filterRequestVersion = 0;
   draft: CustomExerciseDraft = createCustomExerciseDraft(this.t.lang());
 
   constructor() {
     effect(() => {
-      if (this.auth.isAuthenticated()) {
-        void this.loadPage(0);
-        void this.loadFilterOptions();
-      } else {
+      const status = this.auth.initializationStatus();
+      const accountId = this.auth.currentUser()?.id ?? null;
+      const version = ++this.authStateVersion;
+
+      if (status === 'guest') {
+        this.changeVisibleAccount(null);
         this.view.set('guest');
-        this.page.set(null);
+        return;
       }
+
+      if (status === 'authenticated' && accountId) {
+        void this.activateCatalog(accountId, version);
+        return;
+      }
+
+      void this.showCachedCatalogWhileReconnecting(accountId, version);
     });
   }
 
@@ -98,49 +113,54 @@ export class ExerciseCatalogComponent {
   }
 
   async loadPage(page: number): Promise<void> {
-    if (!this.auth.isAuthenticated()) {
-      this.view.set('guest');
-      return;
-    }
+    const accountId = this.auth.currentUser()?.id;
+    if (!this.auth.isAuthenticated() || !accountId) return;
 
+    const requestVersion = ++this.pageRequestVersion;
+    const query = this.catalogQuery(page);
     this.loading.set(true);
     this.error.set(null);
+    this.view.set('catalog');
     try {
-      const response = await firstValueFrom(this.api.list({
-        page,
-        size: this.pageSize,
-        search: this.search.trim() || undefined,
-        category: this.category.trim() || undefined,
-        equipment: this.equipment.trim() || undefined,
-        muscleGroup: this.muscleGroup.trim() || undefined,
-        targetMuscle: this.targetMuscle.trim() || undefined,
-      }));
+      const response = await firstValueFrom(this.api.list(query));
+      if (!this.isCurrentRequest(accountId, requestVersion)) return;
       this.pageNumber = response.page;
       this.page.set(response);
       this.view.set('catalog');
+      void AccountReadCacheRepository.saveExercises(accountId, query, response).catch(() => undefined);
     } catch (error) {
+      if (!this.isCurrentRequest(accountId, requestVersion) || this.auth.isGuest()) return;
       this.error.set(exerciseErrorMessage(error));
       this.view.set('catalog');
     } finally {
-      this.loading.set(false);
+      if (requestVersion === this.pageRequestVersion) this.loading.set(false);
     }
   }
 
   async loadFilterOptions(): Promise<void> {
-    if (!this.auth.isAuthenticated()) {
-      return;
-    }
+    const accountId = this.auth.currentUser()?.id;
+    if (!this.auth.isAuthenticated() || !accountId) return;
 
+    const requestVersion = ++this.filterRequestVersion;
     this.filtersLoading.set(true);
     this.filtersError.set(null);
     try {
-      this.filterOptions.set(await firstValueFrom(this.api.getFilterOptions()));
+      const options = await firstValueFrom(this.api.getFilterOptions());
+      if (requestVersion === this.filterRequestVersion && this.auth.currentUser()?.id === accountId) this.filterOptions.set(options);
     } catch {
       // The catalog remains usable with text filters if filter metadata is temporarily unavailable.
-      this.filtersError.set('No se pudieron cargar las opciones de filtro.');
+      if (requestVersion === this.filterRequestVersion && this.auth.currentUser()?.id === accountId) this.filtersError.set('No se pudieron cargar las opciones de filtro.');
     } finally {
-      this.filtersLoading.set(false);
+      if (requestVersion === this.filterRequestVersion) this.filtersLoading.set(false);
     }
+  }
+
+  async retryConnection(): Promise<void> {
+    if (this.auth.isAuthenticated()) {
+      await this.loadPage(this.pageNumber);
+      return;
+    }
+    await this.auth.retryInitialization();
   }
 
   async openDetail(id: string): Promise<void> {
@@ -262,6 +282,76 @@ export class ExerciseCatalogComponent {
     if (page && this.pageNumber + 1 < page.totalPages) {
       await this.loadPage(this.pageNumber + 1);
     }
+  }
+
+  private async activateCatalog(accountId: string, authVersion: number): Promise<void> {
+    this.changeVisibleAccount(accountId);
+    await this.restoreCachedPage(accountId, 0, authVersion);
+    if (!this.isCurrentAuthState(accountId, authVersion, 'authenticated')) return;
+    void this.loadPage(0);
+    void this.loadFilterOptions();
+  }
+
+  private async showCachedCatalogWhileReconnecting(accountId: string | null, authVersion: number): Promise<void> {
+    this.changeVisibleAccount(accountId);
+    if (!accountId) {
+      this.view.set('reconnecting');
+      return;
+    }
+
+    const restored = await this.restoreCachedPage(accountId, 0, authVersion);
+    if (!restored && this.isCurrentAuthState(accountId, authVersion)) this.view.set('reconnecting');
+  }
+
+  private async restoreCachedPage(accountId: string, page: number, authVersion: number): Promise<boolean> {
+    try {
+      const cached = await AccountReadCacheRepository.getExercises(accountId, this.catalogQuery(page));
+      if (!cached || !this.isCurrentAuthState(accountId, authVersion)) return false;
+      this.pageNumber = cached.page.page;
+      this.page.set(cached.page);
+      this.view.set('catalog');
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private changeVisibleAccount(accountId: string | null): void {
+    if (this.visibleAccountId === accountId) return;
+    this.visibleAccountId = accountId;
+    this.pageRequestVersion++;
+    this.filterRequestVersion++;
+    this.page.set(null);
+    this.filterOptions.set(null);
+    this.detail.set(null);
+    this.error.set(null);
+    this.filtersError.set(null);
+    this.loading.set(false);
+    this.filtersLoading.set(false);
+  }
+
+  private catalogQuery(page: number): ExerciseListParams {
+    return {
+      page,
+      size: this.pageSize,
+      search: this.search.trim() || undefined,
+      category: this.category.trim() || undefined,
+      equipment: this.equipment.trim() || undefined,
+      muscleGroup: this.muscleGroup.trim() || undefined,
+      targetMuscle: this.targetMuscle.trim() || undefined,
+    };
+  }
+
+  private isCurrentAuthState(accountId: string, version: number, status?: 'authenticated'): boolean {
+    return version === this.authStateVersion
+      && this.auth.currentUser()?.id === accountId
+      && (!status || this.auth.initializationStatus() === status);
+  }
+
+  private isCurrentRequest(accountId: string, requestVersion: number): boolean {
+    return requestVersion === this.pageRequestVersion
+      && this.auth.isAuthenticated()
+      && this.auth.currentUser()?.id === accountId;
   }
 
 }
