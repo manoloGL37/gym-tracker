@@ -1,6 +1,6 @@
 import { CommonModule } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, effect, inject, signal } from '@angular/core';
+import { afterNextRender, Component, effect, ElementRef, inject, Injector, signal, ViewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
 import { AuthSessionService } from '../../auth/auth-session.service';
@@ -23,6 +23,7 @@ export class RoutinesComponent {
   private readonly exerciseApi = inject(ExerciseApiService);
   private readonly accountSync = inject(AccountSyncService);
   private readonly reads = inject(LocalFirstReadService);
+  private readonly injector = inject(Injector);
   private loadId = 0;
   private snapshotAccountId: string | null | undefined;
 
@@ -42,6 +43,10 @@ export class RoutinesComponent {
   localExercises: { id: string; name: string; setsCount: number }[] = [];
   cloudDraft: CloudRoutineDraft = newCloudRoutineDraft();
   editorOpen = false;
+  editorLoading = false;
+  editingRoutineName = '';
+
+  @ViewChild('routineEditorTitle') private routineEditorTitle?: ElementRef<HTMLElement>;
 
   selectorOpen = false;
   selectorLoading = false;
@@ -101,34 +106,42 @@ export class RoutinesComponent {
   }
 
   startCreate(): void {
-    this.editorOpen = true;
     this.error.set(null);
     this.editingLocal = null;
     this.editingCloud = null;
     this.localName = '';
     this.localExercises = [];
     if (this.auth.isAuthenticated()) this.cloudDraft = newCloudRoutineDraft();
+    this.editingRoutineName = '';
+    this.editorLoading = false;
+    this.openEditor();
   }
 
   async startEdit(item: RoutineListItem): Promise<void> {
-    this.editorOpen = true;
     this.error.set(null);
+    this.editingRoutineName = item.routine.name;
     if (item.source === 'local') {
       this.editingCloud = null;
       this.editingLocal = { ...item.routine };
       this.localName = item.routine.name;
       this.localExercises = item.routine.exercises.map(exercise => ({ ...exercise }));
+      this.editorLoading = false;
+      this.openEditor();
       return;
     }
+    this.editingLocal = null;
+    this.editingCloud = null;
+    this.editorLoading = true;
+    this.openEditor();
     this.saving.set(true);
     try {
       const detail = await firstValueFrom(this.routineApi.get(item.routine.id));
-      this.editingLocal = null;
       this.editingCloud = detail;
       this.cloudDraft = cloudDraftFromResponse(detail, await this.loadCloudExerciseNames(detail));
     } catch (error) {
       this.error.set(routineErrorMessage(error));
     } finally {
+      this.editorLoading = false;
       this.saving.set(false);
     }
   }
@@ -188,12 +201,23 @@ export class RoutinesComponent {
 
   cancelEdit(): void {
     this.editorOpen = false;
+    this.editorLoading = false;
+    this.editingRoutineName = '';
     this.editingLocal = null;
     this.editingCloud = null;
     this.localName = '';
     this.localExercises = [];
     this.cloudDraft = newCloudRoutineDraft();
     this.closeSelector();
+  }
+
+  private openEditor(): void {
+    this.editorOpen = true;
+    afterNextRender(() => {
+      const prefersReducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+      window.scrollTo({ top: 0, behavior: prefersReducedMotion ? 'auto' : 'smooth' });
+      this.routineEditorTitle?.nativeElement.focus({ preventScroll: true });
+    }, { injector: this.injector });
   }
 
   async openSelector(): Promise<void> { this.selectorOpen = true; await this.loadSelectorPage(0); }
