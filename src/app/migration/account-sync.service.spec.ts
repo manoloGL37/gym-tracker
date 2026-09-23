@@ -41,6 +41,21 @@ describe('AccountSyncService', () => {
     expect(service.status()).toBe('synced');
   });
 
+  it('settles 404 confirmed resources after a ledger-triggered progress read', async () => {
+    let release!: () => void;
+    migration.start.and.returnValue(new Promise<void>(resolve => release = resolve) as any);
+    migration.getProgress.and.returnValue(Promise.resolve({ completed: 404, total: 404, pending: 0, pendingWorkouts: 0, attention: 0 }));
+
+    service.start('account-a');
+    release();
+    (migration.changes as any).update((value: number) => value + 1);
+    TestBed.flushEffects();
+    await flushPromises();
+
+    expect(service.state()).toEqual(jasmine.objectContaining({ completed: 404, total: 404, pending: 0, attention: 0 }));
+    expect(service.status()).toBe('synced');
+  });
+
   it('shows existing progress immediately while exercise synchronization is running', async () => {
     let release!: () => void;
     migration.getProgress.and.resolveTo({ completed: 1, total: 3, pending: 2, pendingWorkouts: 1, attention: 0 });
@@ -88,6 +103,17 @@ describe('AccountSyncService', () => {
     expect(migration.start).toHaveBeenCalledTimes(2);
   });
 
+  it('does not mark blocked or failed resources as synchronized', async () => {
+    migration.getProgress.and.resolveTo({ completed: 404, total: 404, pending: 0, pendingWorkouts: 1, attention: 1 });
+
+    service.start('account-a');
+    await flushPromises();
+
+    expect(service.status()).toBe('attention');
+    expect(service.pending()).toBe(0);
+    expect(service.attention()).toBe(1);
+  });
+
   it('stops work on logout without deleting persisted migration state', () => {
     service.start('account-a');
     service.stop();
@@ -110,6 +136,23 @@ describe('AccountSyncService', () => {
     service.resumePendingSync();
     expect(migration.start).toHaveBeenCalledTimes(1);
     release();
+  });
+
+  it('ignores progress that arrives from a previous account run', async () => {
+    let releaseFirst!: () => void;
+    migration.start.and.callFake((accountId: string) => accountId === 'account-a'
+      ? new Promise<void>(resolve => releaseFirst = resolve)
+      : Promise.resolve({} as any),
+    );
+
+    service.start('account-a');
+    service.start('account-b');
+    await flushPromises();
+    releaseFirst();
+    await flushPromises();
+
+    expect(service.status()).toBe('synced');
+    expect(migration.start).toHaveBeenCalledWith('account-b');
   });
 
   it('starts a new pass when a local workout completes after a clean sync', async () => {

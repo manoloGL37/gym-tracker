@@ -135,15 +135,33 @@ export class AccountSyncService implements OnDestroy {
     try {
       const progress = await this.migration.getProgress(accountId);
       if (progressReadId !== this.progressReadId || runId !== this.runId || accountId !== this.accountId) return null;
-      this.completed.set(progress.completed);
-      this.total.set(progress.total);
-      this.pending.set(progress.pending);
-      this.attention.set(progress.attention);
-      this.pendingWorkouts.set(progress.pendingWorkouts);
+      this.applyProgress(progress);
       return progress;
     } catch {
       return null;
     }
+  }
+
+  /** Reconcile every accepted ledger read, including reads triggered by ledger changes. */
+  private applyProgress(progress: { completed: number; total: number; pending: number; pendingWorkouts: number; attention: number }): void {
+    this.completed.set(progress.completed);
+    this.total.set(progress.total);
+    this.pending.set(progress.pending);
+    this.attention.set(progress.attention);
+    this.pendingWorkouts.set(progress.pendingWorkouts);
+
+    if (progress.pending > 0) {
+      this.hasPendingWork = true;
+      if (this.running) this.status.set(this.retryAttempt ? 'retrying' : 'syncing');
+      return;
+    }
+
+    this.hasPendingWork = false;
+    this.retryAttempt = 0;
+    this.clearRetry();
+    // Completion is a queue state: all retryable work is gone and no resource needs intervention.
+    // It deliberately does not infer success from completed === total.
+    this.status.set(progress.attention > 0 ? 'attention' : 'synced');
   }
 
   private scheduleRetry(runId: number): void {

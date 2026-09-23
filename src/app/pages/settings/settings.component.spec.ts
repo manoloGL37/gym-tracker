@@ -61,7 +61,7 @@ describe('SettingsComponent account data status', () => {
     fixture.detectChanges();
     const text = fixture.nativeElement.textContent as string;
     expect(text).toContain('Tus datos');
-    expect(text).toContain('Todo sincronizado');
+    expect(text).toContain('Tus datos están sincronizados');
     expect(text).not.toContain('Guardar datos en tu cuenta');
     expect(text).not.toContain('Ahora no');
   });
@@ -98,6 +98,27 @@ describe('SettingsComponent account data status', () => {
 
     expect(fixture.nativeElement.textContent).toContain('Sincronizando · 2 de 3');
     expect(fixture.nativeElement.querySelector('[role="progressbar"]').getAttribute('aria-valuenow')).toBe('67');
+  });
+
+  it('transitions its open view from complete progress to the confirmed state without a reload', async () => {
+    status.set('syncing'); completed.set(404); total.set(404); pending.set(0);
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    status.set('synced');
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.textContent).toContain('Tus datos están sincronizados');
+    expect(fixture.nativeElement.querySelector('[role="progressbar"]')).toBeNull();
+  });
+
+  it('does not present a full progress bar as success when attention is required', async () => {
+    status.set('attention'); attention.set(1); completed.set(404); total.set(404); pending.set(0);
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(fixture.nativeElement.textContent).toContain('1 elemento necesita tu atención');
+    expect(fixture.nativeElement.querySelector('[role="progressbar"]')).toBeNull();
   });
 
   it('shows reconnecting state instead of guest actions while restoration is pending', async () => {

@@ -131,6 +131,7 @@ describe('LocalToCloudMigrationService', () => {
     expect(ledger.routines['resolved-routine'].status).toBe('migrated');
     expect(ledger.routines['pending-routine'].status).toBe('blocked');
     expect(routineApi.create).toHaveBeenCalledTimes(1);
+    expect(await service.getProgress('account-a')).toEqual(jasmine.objectContaining({ pending: 0, attention: 2 }));
   });
 
   it('keeps transient failures pending with the same clientId', async () => {
