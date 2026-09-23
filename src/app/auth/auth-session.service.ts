@@ -1,6 +1,6 @@
 import { computed, Injectable, Injector, inject, OnDestroy, signal } from '@angular/core';
 import { HttpErrorResponse } from '@angular/common/http';
-import { firstValueFrom } from 'rxjs';
+import { firstValueFrom, timeout } from 'rxjs';
 import { AuthApiService } from './auth-api.service';
 import { AccountSyncService } from '../migration/account-sync.service';
 import {
@@ -14,6 +14,7 @@ import {
 
 @Injectable({ providedIn: 'root' })
 export class AuthSessionService implements OnDestroy {
+  private static readonly restoreRequestTimeoutMs = 15_000;
   private static readonly explicitLogoutKey = 'gym-tracker:auth:explicit-logout';
   private static readonly sessionHintKey = 'gym-tracker:auth:session-expected';
   private static readonly cachedUserKey = 'gym-tracker:auth:cached-user';
@@ -99,7 +100,7 @@ export class AuthSessionService implements OnDestroy {
     this.initializationStatus.set('restoring');
 
     try {
-      const user = await firstValueFrom(this.api.getCurrentUser());
+      const user = await firstValueFrom(this.api.getCurrentUser().pipe(timeout(AuthSessionService.restoreRequestTimeoutMs)));
       if (epoch !== this.sessionEpoch) return;
       this.currentUser.set(user);
       this.initializationStatus.set('authenticated');
@@ -140,7 +141,7 @@ export class AuthSessionService implements OnDestroy {
     }
 
     let promise!: Promise<string>;
-    promise = firstValueFrom(this.api.refresh())
+    promise = firstValueFrom(this.api.refresh().pipe(timeout(AuthSessionService.restoreRequestTimeoutMs)))
       .then(({ accessToken }) => {
         if (epoch !== this.sessionEpoch) throw new SessionSupersededError();
         this.setAccessToken(accessToken);
@@ -166,7 +167,7 @@ export class AuthSessionService implements OnDestroy {
     try {
       await this.refreshAccessToken();
       if (epoch !== this.sessionEpoch) return;
-      const user = await firstValueFrom(this.api.getCurrentUser());
+      const user = await firstValueFrom(this.api.getCurrentUser().pipe(timeout(AuthSessionService.restoreRequestTimeoutMs)));
       if (epoch !== this.sessionEpoch) return;
       this.currentUser.set(user);
       this.initializationStatus.set('authenticated');
