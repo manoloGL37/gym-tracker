@@ -134,14 +134,15 @@ export class SettingsComponent implements OnInit {
       case 'retrying': return 'Reintentando sincronización...';
       case 'waiting': return 'Esperando conexión';
       case 'attention': return state.attention === 1 ? '1 elemento necesita tu atención' : `${state.attention} elementos necesitan tu atención`;
-      case 'synced': return 'Todo sincronizado';
+      case 'synced': return 'Tus datos están sincronizados';
       default: return 'Preparando sincronización';
     }
   }
 
   syncProgressPercent(): number | null {
-    const { total, completed } = this.accountSync.state();
-    return total ? Math.round((completed / total) * 100) : null;
+    const { status, total, completed, pending, attention } = this.accountSync.state();
+    if ((status !== 'syncing' && status !== 'retrying') || !total || !pending || attention) return null;
+    return Math.round((completed / total) * 100);
   }
 
   // Manual restore from server

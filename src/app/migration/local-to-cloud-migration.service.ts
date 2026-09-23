@@ -182,7 +182,7 @@ export class LocalToCloudMigrationService {
       // Pending set rows inherit their workout's state and must not create an unresolved retry loop.
       pending: primaryRecords.filter(record => record.status === 'pending').length,
       pendingWorkouts: Object.values(ledger.workouts).filter(record => record.status === 'pending' || record.status === 'blocked').length,
-      attention: unresolved.length + primaryRecords.filter(record => record.status === 'failed' || record.status === 'unsupported').length,
+      attention: unresolved.length + primaryRecords.filter(record => record.status === 'blocked' || record.status === 'failed' || record.status === 'unsupported').length,
     };
   }
 
