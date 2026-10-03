@@ -52,22 +52,24 @@ export class WorkoutDetailComponent implements OnInit {
       const workout = cached?.page.content.find(item => item.id === id);
       if (workout) {
         this.cloudWorkout = workout;
-        this.cloudRoutineName = cached?.routineNames[workout.routineId ?? ''] ?? 'Rutina sin nombre';
+        this.cloudRoutineName = workout.nameSnapshot ?? cached?.routineNames[workout.routineId ?? ''] ?? 'Rutina sin nombre';
       }
     }
     try {
       this.cloudWorkout = await firstValueFrom(this.workoutApi.get(id));
-      if (this.cloudWorkout.routineId) {
+      if (this.cloudWorkout.nameSnapshot) this.cloudRoutineName = this.cloudWorkout.nameSnapshot;
+      else if (this.cloudWorkout.routineId) {
         try { this.cloudRoutineName = (await firstValueFrom(this.routineApi.get(this.cloudWorkout.routineId))).name; } catch { /* snapshot remains readable without its routine. */ }
       }
       await Promise.all(this.cloudWorkout.exercises.map(async exercise => {
+        if (!exercise.exerciseId || exercise.exerciseNameSnapshot) return;
         try { this.cloudExerciseNames.set(exercise.exerciseId, getExerciseName(await firstValueFrom(this.exerciseApi.get(exercise.exerciseId)), this.t.lang())); } catch { /* Keep the snapshot readable without exposing its internal identifier. */ }
       }));
     } catch {
       if (!this.cloudWorkout) this.cloudError = 'No se pudo cargar este entrenamiento.';
     }
   }
-  cloudExerciseName(exerciseId: string): string { return this.cloudExerciseNames.get(exerciseId) ?? 'Ejercicio sin nombre'; }
+  cloudExerciseName(exerciseId: string | null): string { return this.cloudExerciseNames.get(exerciseId ?? '') ?? 'Ejercicio sin nombre'; }
 
   startEdit() {
     this.editMode.set(true);

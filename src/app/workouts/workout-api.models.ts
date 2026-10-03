@@ -4,6 +4,25 @@ export type WorkoutExerciseId = string;
 export type WorkoutSetId = string;
 export type WorkoutClientId = string;
 
+/** V15: atomic historical snapshot, independent of the current routine. */
+export interface CreateMobileWorkoutRequest {
+  clientId: string;
+  routineId: string | null;
+  startedAt: string;
+  completedAt: string;
+  calendarZone: string;
+  notes: string | null;
+  nameSnapshot: string;
+  exercises: {
+    clientId: string;
+    exerciseId: string | null;
+    exerciseNameSnapshot: string;
+    position: number;
+    notes: string | null;
+    sets: CreateWorkoutSetRequest[];
+  }[];
+}
+
 export interface CreateWorkoutRequest {
   /** Optional UUID; a retry is idempotent for the authenticated user. */
   clientId?: WorkoutClientId | null;
@@ -43,7 +62,9 @@ export interface WorkoutSetResponse {
 
 export interface WorkoutExerciseResponse {
   id: WorkoutExerciseId;
-  exerciseId: string;
+  exerciseId: string | null;
+  clientId?: string | null;
+  exerciseNameSnapshot?: string | null;
   /** Snapshot position copied from the routine; zero-based. */
   position: number;
   notes: string | null;
@@ -61,6 +82,10 @@ export interface WorkoutResponse {
   /** Ascending position order. */
   exercises: WorkoutExerciseResponse[];
   createdAt: string;
+  startedAtInstant?: string | null;
+  completedAtInstant?: string | null;
+  calendarZone?: string | null;
+  nameSnapshot?: string | null;
 }
 
 /** The list endpoint returns the full workout DTO in a Spring Page. */

@@ -1,3 +1,5 @@
+import { CreateMobileWorkoutRequest } from '../workouts/workout-api.models';
+
 export type MigrationStatus =
   | 'available'
   | 'postponed'
@@ -32,6 +34,11 @@ export interface ResourceMapping {
   claimedAt?: string;
   error?: string;
   localOnlyReason?: string;
+  /** Immutable proposal persisted before POST. Legacy proposals never auto replay. */
+  snapshotPayload?: CreateMobileWorkoutRequest;
+  snapshotMode?: 'new' | 'recovery';
+  /** Recovery failures do not erase the original migration error/reason. */
+  recoveryError?: string;
 }
 
 /** Stored under the authenticated `/me` UUID, never under an email or device identifier. */

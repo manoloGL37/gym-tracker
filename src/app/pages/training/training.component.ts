@@ -100,6 +100,7 @@ export class TrainingComponent implements OnInit, AfterViewInit, OnDestroy {
     if (routine) {
       const now = new Date().toISOString();
       this.training = { id: 'active', routineId: routine.id, routineName: routine.name, startedAt: now,
+        calendarZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
         exercises: routine.exercises.map(ex => ({ exerciseId: ex.id, name: ex.name, sets: Array.from({ length: ex.setsCount }).map((_, j) => ({ setIndex: j, reps: null, weight: null })) })), };
       await ActiveTrainingRepository.save(this.training);
     }
@@ -186,7 +187,7 @@ export class TrainingComponent implements OnInit, AfterViewInit, OnDestroy {
       const workout = await firstValueFrom(this.workoutApi.create({ clientId, routineId, startedAt, completedAt: null, notes: null }));
       const [routine, names] = await Promise.all([
         firstValueFrom(this.routineApi.get(routineId)),
-        this.loadExerciseNames(workout.exercises.map(exercise => exercise.exerciseId)),
+        this.loadExerciseNames(workout.exercises.map(exercise => exercise.exerciseId).filter((id): id is string => id !== null)),
       ]);
       this.cloudTraining = fillCloudPlannedSets(cloudActiveFromWorkout(workout, routineName, names), routine);
       await CloudActiveTrainingRepository.save(this.cloudTraining);
@@ -213,7 +214,7 @@ export class TrainingComponent implements OnInit, AfterViewInit, OnDestroy {
       if (workout.completedAt !== null) { await CloudActiveTrainingRepository.clear(); this.cloudTraining = null; return; }
       const [routine, names] = await Promise.all([
         firstValueFrom(this.routineApi.get(cached.routineId)),
-        this.loadExerciseNames(workout.exercises.map(exercise => exercise.exerciseId)),
+        this.loadExerciseNames(workout.exercises.map(exercise => exercise.exerciseId).filter((id): id is string => id !== null)),
       ]);
       const fresh = cloudActiveFromWorkout(workout, cached.routineName, names);
       for (const exercise of fresh.exercises) {
@@ -420,7 +421,7 @@ export function buildCloudBenchmarkIndex(workouts: WorkoutResponse[]): Benchmark
   const index: BenchmarkIndex = new Map();
   for (const workout of workouts.slice().sort((a, b) => new Date(b.completedAt ?? b.startedAt).getTime() - new Date(a.completedAt ?? a.startedAt).getTime())) {
     for (const exercise of workout.exercises) {
-      if (index.has(exercise.exerciseId)) continue;
+      if (!exercise.exerciseId || index.has(exercise.exerciseId)) continue;
       if (exercise.sets.length) index.set(exercise.exerciseId, new Map(exercise.sets.map(set => [set.setNumber, { reps: set.reps, weight: set.weight }])));
     }
   }

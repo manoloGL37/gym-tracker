@@ -62,8 +62,8 @@ export function fillCloudPlannedSets(training: CloudActiveTraining, routine: Rou
 export function cloudExerciseFromResponse(exercise: WorkoutExerciseResponse, names: Map<string, string>): CloudActiveExercise {
   const persisted = exercise.sets.slice().sort((a, b) => a.setNumber - b.setNumber);
   return {
-    id: exercise.id, exerciseId: exercise.exerciseId, position: exercise.position,
-    name: names.get(exercise.exerciseId) ?? 'Ejercicio sin nombre', notes: exercise.notes,
+    id: exercise.id, exerciseId: exercise.exerciseId ?? '', position: exercise.position,
+    name: exercise.exerciseNameSnapshot ?? names.get(exercise.exerciseId ?? '') ?? 'Ejercicio sin nombre', notes: exercise.notes,
     sets: persisted.map(set => ({ clientId: set.clientId ?? crypto.randomUUID(), setNumber: set.setNumber, reps: set.reps, weight: set.weight, rpe: set.rpe, persisted: set, syncState: 'saved' })),
   };
 }

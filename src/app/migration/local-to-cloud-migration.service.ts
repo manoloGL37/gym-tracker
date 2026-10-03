@@ -8,7 +8,9 @@ import { ExerciseApiService } from '../exercises/exercise-api.service';
 import { ExerciseResponse } from '../exercises/exercise-api.models';
 import { RoutineApiService } from '../routines/routine-api.service';
 import { WorkoutApiService } from '../workouts/workout-api.service';
-import { toBackendLocalDateTime } from '../workouts/workout-domain';
+import { snapshotPayload, sameSnapshot, sameProposedSnapshot, validateCalendarZone } from './workout-snapshot';
+import { AuthApiService } from '../auth/auth-api.service';
+import { WorkoutResponse } from '../workouts/workout-api.models';
 import { ExerciseMapping, MigrationLedger, MigrationPreview, MigrationRecordStatus, MigrationStatus, ResourceMapping } from './local-to-cloud-migration.models';
 
 /**
@@ -45,7 +47,7 @@ export class LocalToCloudMigrationService {
     ]);
     const ledger = await this.getLedger(accountId);
     const references = localExerciseReferences(routines);
-    const unsupported = workouts.filter(workout => this.unsupportedWorkoutReason(workout, routines) !== null).length;
+    const unsupported = workouts.filter(workout => !workout.calendarZone || ledger.workouts[workout.id]?.status === 'unsupported').length;
     return {
       routines: routines.length, workouts: workouts.length, exerciseReferences: references.length,
       // A pending custom choice is resolved by the user and can be safely retried; only a
@@ -137,6 +139,12 @@ export class LocalToCloudMigrationService {
 
   async start(accountId: string): Promise<MigrationLedger> {
     const ledger = await this.getLedger(accountId);
+    const [localRoutines, localWorkouts] = await Promise.all([RoutinesRepository.getAll(), WorkoutHistoryRepository.getAll()]);
+    const runnable = [...Object.values(ledger.exercises), ...Object.values(ledger.routines)].some(mapping => mapping.status === 'pending') ||
+      localRoutines.some(routine => !ledger.routines[routine.id]) ||
+      localWorkouts.some(workout => (!ledger.workouts[workout.id] && Boolean(workout.calendarZone)) ||
+        (ledger.workouts[workout.id]?.snapshotMode === 'new' && ledger.workouts[workout.id].status === 'pending'));
+    if (!runnable) return ledger; // Attention states and evidence stay untouched on startup.
     ledger.postponed = false;
     const ownership = await this.getOwnership();
     await this.ensureClientIds(ledger, ownership);
@@ -180,8 +188,8 @@ export class LocalToCloudMigrationService {
       completed: supported.filter(record => record.status === 'migrated').length,
       total: supported.length + unresolved.length,
       // Pending set rows inherit their workout's state and must not create an unresolved retry loop.
-      pending: primaryRecords.filter(record => record.status === 'pending').length,
-      pendingWorkouts: Object.values(ledger.workouts).filter(record => record.status === 'pending' || record.status === 'blocked').length,
+      pending: [...Object.values(ledger.exercises), ...Object.values(ledger.routines)].filter(record => record.status === 'pending').length + Object.values(ledger.workouts).filter(record => record.status === 'pending' && record.snapshotMode === 'new').length,
+      pendingWorkouts: Object.values(ledger.workouts).filter(record => record.status !== 'migrated').length,
       attention: unresolved.length + primaryRecords.filter(record => record.status === 'blocked' || record.status === 'failed' || record.status === 'unsupported').length,
     };
   }
@@ -193,9 +201,13 @@ export class LocalToCloudMigrationService {
     }
     for (const workout of workouts) {
       if (isOwnedByAnother(ownership.workouts, workout.id, ledger.accountId)) continue;
-      const workoutMapping = ledger.workouts[workout.id] ??= pendingMapping();
-      if (workoutMapping.status === 'migrated') continue;
+      // Legacy records without a captured zone are held without changing their existing states.
+      if (!workout.calendarZone && !ledger.workouts[workout.id]) continue;
+      const workoutMapping = ledger.workouts[workout.id] ??= { ...pendingMapping(), snapshotMode: 'new' };
+      if (workoutMapping.snapshotMode !== 'new') continue;
+      if (workoutMapping.status !== 'pending' || !workout.calendarZone) continue;
       for (const exercise of workout.exercises) for (const set of exercise.sets) {
+        if (set.reps === null || set.weight === null) continue;
         const key = setKey(workout.id, exercise.exerciseId, set.setIndex);
         if (!isOwnedByAnother(ownership.sets, key, ledger.accountId)) ledger.sets[key] ??= pendingMapping();
       }
@@ -211,6 +223,7 @@ export class LocalToCloudMigrationService {
     for (const reference of localExerciseReferences(await RoutinesRepository.getAll())) {
       if (isOwnedByAnother(ownership.exercises, reference.key, ledger.accountId)) continue;
       const existing = ledger.exercises[reference.key];
+      if (existing && existing.status !== 'pending') continue;
       if (existing?.serverId) {
         existing.status = 'migrated';
         delete existing.error;
@@ -233,7 +246,7 @@ export class LocalToCloudMigrationService {
 
   private async migrateResolvedExercises(ledger: MigrationLedger): Promise<void> {
     for (const mapping of Object.values(ledger.exercises)) {
-      if (mapping.choice !== 'custom' || mapping.status === 'migrated') continue;
+      if (mapping.choice !== 'custom' || mapping.status !== 'pending') continue;
       try {
         const result = await firstValueFrom(this.exercises.create({
           clientId: mapping.clientId ?? (mapping.clientId = crypto.randomUUID()), category: null, equipment: null, targetMuscle: null, muscleGroup: null, secondaryMuscles: null,
@@ -249,7 +262,7 @@ export class LocalToCloudMigrationService {
     for (const routine of await RoutinesRepository.getAll()) {
       if (isOwnedByAnother(ownership.routines, routine.id, ledger.accountId)) continue;
       const mapping = ledger.routines[routine.id] ?? (ledger.routines[routine.id] = pendingMapping());
-      if (mapping.status === 'migrated') continue;
+      if (mapping.status !== 'pending') continue;
       const exerciseMappings = routine.exercises.map(exercise => ledger.exercises[routineExerciseKey(routine.id, exercise.id)]);
       const exerciseIds = exerciseMappings.map(exercise => exercise?.serverId);
       if (exerciseIds.some(id => !id)) {
@@ -269,59 +282,128 @@ export class LocalToCloudMigrationService {
   }
 
   private async migrateWorkouts(ledger: MigrationLedger, ownership: MigrationOwnership): Promise<void> {
-    const routines = await RoutinesRepository.getAll();
     for (const workout of await WorkoutHistoryRepository.getAll()) {
       if (isOwnedByAnother(ownership.workouts, workout.id, ledger.accountId)) continue;
-      const mapping = ledger.workouts[workout.id] ?? (ledger.workouts[workout.id] = pendingMapping());
-      if (mapping.status === 'migrated' || mapping.status === 'unsupported') continue;
-      const unsupported = this.unsupportedWorkoutReason(workout, routines);
-      if (unsupported) {
-        mapping.status = 'unsupported'; mapping.localOnlyReason = unsupported; delete mapping.error;
-        for (const exercise of workout.exercises) for (const set of exercise.sets) {
-          const setMapping = ledger.sets[setKey(workout.id, exercise.exerciseId, set.setIndex)];
-          if (setMapping?.status !== 'migrated') { setMapping.status = 'unsupported'; setMapping.localOnlyReason = unsupported; }
-        }
-        await this.save(ledger); continue;
-      }
-      const routineMapping = ledger.routines[workout.routineId];
-      if (!routineMapping?.serverId) {
-        mapping.status = routineMapping?.status === 'pending' ? 'pending' : 'blocked';
-        mapping.error = 'La rutina vinculada todavía no se ha migrado.';
-        await this.save(ledger); continue;
-      }
+      const mapping = ledger.workouts[workout.id];
+      if (!mapping || mapping.status !== 'pending' || mapping.snapshotMode !== 'new') continue;
+      // Existing web operations may already have committed. Never convert/replay them implicitly.
+      if (!mapping.snapshotPayload && (!workout.calendarZone || mapping.serverId)) continue;
       try {
-        const response = await firstValueFrom(this.workoutsApi.create({ clientId: mapping.clientId, routineId: routineMapping.serverId, startedAt: localDateTime(workout.startedAt), completedAt: localDateTime(workout.finishedAt), notes: null }));
+        if (!mapping.snapshotPayload) {
+          mapping.snapshotPayload = snapshotPayload(workout, mapping, ledger, workout.calendarZone!);
+          mapping.snapshotMode = 'new';
+          await this.save(ledger); // identity AND exact body durable before any recoverable POST
+        }
+        const response = await firstValueFrom(this.workoutsApi.createMobile(mapping.snapshotPayload));
         mapping.serverId = response.id;
-        await this.save(ledger); // persist before set calls: an ambiguous retry reuses this clientId.
-        for (const localExercise of workout.exercises) {
-          const serverExercise = response.exercises.find(value => value.position === workout.exercises.indexOf(localExercise));
-          if (!serverExercise) throw new Error('El servidor no devolvió el snapshot esperado');
-          for (const localSet of localExercise.sets) {
-            const setMapping = ledger.sets[setKey(workout.id, localExercise.exerciseId, localSet.setIndex)] ?? (ledger.sets[setKey(workout.id, localExercise.exerciseId, localSet.setIndex)] = pendingMapping());
-            if (setMapping.status === 'migrated') continue;
-            const set = await firstValueFrom(this.workoutsApi.createSet(response.id, serverExercise.id, { clientId: setMapping.clientId, setNumber: localSet.setIndex + 1, weight: localSet.weight!, reps: localSet.reps!, rpe: null }));
-            setMapping.serverId = set.id; setMapping.status = 'migrated'; delete setMapping.error;
-            await this.save(ledger);
+        const current = await db.workoutHistory.get(workout.id);
+        if (!sameSnapshot(mapping.snapshotPayload, response) || !current ||
+            !sameSnapshot(snapshotPayload(current, mapping, ledger, mapping.snapshotPayload.calendarZone), response)) {
+          mapping.status = 'blocked';
+          mapping.error = 'El snapshot remoto o el historial local cambió; conciliar, no reenviar.';
+        } else {
+          mapping.status = 'migrated'; delete mapping.error;
+          for (const exercise of mapping.snapshotPayload.exercises) for (const set of exercise.sets) {
+            const setMapping = Object.values(ledger.sets).find(value => value.clientId === set.clientId);
+            const remoteSet = response.exercises.flatMap(value => value.sets).find(value => value.clientId === set.clientId);
+            if (setMapping && remoteSet) { setMapping.status = 'migrated'; setMapping.serverId = remoteSet.id; }
           }
         }
-        mapping.status = 'migrated';
-        mapping.localOnlyReason = workout.exercises.some(exercise => Boolean(exercise.observation?.trim()))
-          ? 'Las observaciones por ejercicio permanecen solo en local.'
-          : undefined;
-        delete mapping.error;
       } catch (error) { mapping.status = failureStatus(error); mapping.error = errorMessage(error); }
       await this.save(ledger);
     }
   }
 
-  private unsupportedWorkoutReason(workout: WorkoutHistory, routines: Routine[]): string | null {
-    const routine = routines.find(value => value.id === workout.routineId);
-    if (!routine) return 'La rutina local original ya no existe.';
-    if (routine.exercises.length !== workout.exercises.length || routine.exercises.some((exercise, index) => exercise.id !== workout.exercises[index]?.exerciseId)) return 'El histórico tiene un snapshot que la API no permite reconstruir.';
-    for (const exercise of workout.exercises) for (const set of exercise.sets) {
-      if (!Number.isInteger(set.reps) || (set.reps ?? 0) < 1 || typeof set.weight !== 'number' || !Number.isFinite(set.weight) || set.weight < 0 || set.weight > 9999.99) return 'Tiene series incompletas o fuera de los límites de la API.';
+  /** READ ONLY: no getLedger(), cache writes, state resets or HTTP mutations. */
+  async inspectRecovery(accountId: string, confirmedZone: string, localIds?: readonly string[]): Promise<RecoveryInspection[]> {
+    validateCalendarZone(confirmedZone);
+    const [ledger, workouts, ownership] = await Promise.all([
+      db.migrationLedgers.get(accountId), WorkoutHistoryRepository.getAll(), this.getOwnership(),
+    ]);
+    const verifyAccount = async () => {
+      if ((await firstValueFrom(this.injector.get(AuthApiService).getCurrentUser())).id !== accountId) throw new Error('La cuenta autenticada no coincide; conciliación cancelada.');
+    };
+    const remote: WorkoutResponse[] = [];
+    let expectedTotal: number | undefined;
+    let page = 0;
+    while (true) {
+      await verifyAccount();
+      const result = await firstValueFrom(this.workoutsApi.list({ page, size: 50, sort: 'id,asc' }));
+      expectedTotal ??= result.totalElements;
+      if (result.totalElements !== expectedTotal) throw new Error('El historial remoto cambió; repetir conciliación.');
+      if (result.number !== page) throw new Error('Paginación remota incoherente; conciliación cancelada.');
+      for (const value of result.content) remote.push(await firstValueFrom(this.workoutsApi.get(value.id)));
+      if (result.last) break;
+      if (!result.content.length || ++page >= result.totalPages) throw new Error('Listado remoto incompleto; conciliación cancelada.');
     }
-    return null;
+    await verifyAccount();
+    if (remote.length !== expectedTotal) throw new Error('Faltan detalles remotos; conciliación cancelada.');
+    if (new Set(remote.map(value => value.id)).size !== remote.length) throw new Error('Listado remoto duplicado; repetir conciliación.');
+    return workouts.filter(workout => (!localIds || localIds.includes(workout.id)) && !isOwnedByAnother(ownership.workouts, workout.id, accountId)).map(workout => {
+      const mapping = ledger?.workouts[workout.id];
+      const row: RecoveryInspection = { localId: workout.id, clientId: mapping?.clientId, remoteId: mapping?.serverId, classification: 'D', reason: 'Sin identidad persistida; revisión manual necesaria.' };
+      if (!mapping || !ledger) return row;
+      let payload;
+      try { payload = mapping.snapshotPayload ?? snapshotPayload(workout, mapping, ledger, confirmedZone); }
+      catch (error) { return { ...row, reason: errorMessage(error) }; }
+      const candidates = remote.filter(value => value.id === mapping.serverId || value.clientId === mapping.clientId);
+      if (candidates.length > 1) return { ...row, reason: 'Identidades remotas contradictorias.' };
+      if (candidates.length === 1 && ((mapping.serverId && mapping.serverId !== candidates[0].id) ||
+          candidates[0].clientId !== mapping.clientId)) return { ...row, reason: 'El remoteId y el clientId no confirman la misma identidad.' };
+      if (candidates.length === 1) return { ...row, remoteId: candidates[0].id,
+        classification: sameSnapshot(payload, candidates[0]) ? 'A' : 'C',
+        reason: sameSnapshot(payload, candidates[0]) ? 'Snapshot confirmado.' : 'Identidad existente con datos diferentes/incompletos; POST mobile no lo reparará.' };
+      // Timestamp equality is only an ambiguity signal, NEVER an automatic merge.
+      const wallTime = new Intl.DateTimeFormat('sv-SE', { timeZone: payload.calendarZone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' }).format(new Date(payload.startedAt)).replace(' ', 'T');
+      if (mapping.serverId || remote.some(value => Date.parse(value.startedAtInstant ?? '') === Date.parse(payload.startedAt) || value.startedAt?.slice(0, 19) === wallTime)) return { ...row, reason: 'Posible registro sin identidad coincidente o remoteId desaparecido.' };
+      return { ...row, classification: 'B', reason: 'Identidad ausente en todas las páginas; sin coincidencias temporales.' };
+    });
+  }
+
+  /** Explicit preparation ONLY. Never sends or changes status, even unsupported. */
+  async prepareRecovery(accountId: string, localId: string, historicalZone: string, confirmation: { backupsVerified: boolean; historicalZoneConfirmed: boolean }): Promise<void> {
+    if (!confirmation.backupsVerified || !confirmation.historicalZoneConfirmed) throw new Error('Verifica ambas copias y confirma la zona histórica antes de preparar.');
+    const inspection = (await this.inspectRecovery(accountId, historicalZone, [localId])).find(value => value.localId === localId);
+    if (inspection?.classification !== 'B') throw new Error('Solo se puede preparar una identidad confirmada ausente; los demás casos requieren revisión.');
+    await db.transaction('rw', db.migrationLedgers, db.workoutHistory, async () => {
+      const ledger = await db.migrationLedgers.get(accountId);
+      const workout = await db.workoutHistory.get(localId);
+      const mapping = ledger?.workouts[localId];
+      if (!ledger || !workout || !mapping || mapping.serverId) throw new Error('Identidad local cambiada; repetir conciliación.');
+      if (mapping.snapshotPayload && mapping.snapshotPayload.calendarZone !== historicalZone) throw new Error('La propuesta ya tiene otra zona; requiere revisión, no regeneración.');
+      mapping.snapshotPayload ??= snapshotPayload(workout, mapping, ledger, historicalZone);
+      mapping.snapshotMode = 'recovery';
+      await db.migrationLedgers.put(ledger);
+    });
+    // Preparation never sends. Execution is a separate explicitly approved call.
+  }
+
+  /** Single-record recovery; never called by startup, timers, settings or normal sync. */
+  async recoverPreparedWorkout(accountId: string, localId: string, confirmation: { backupsVerified: boolean; historicalZoneConfirmed: boolean; replayApproved: boolean }): Promise<void> {
+    if (!confirmation.backupsVerified || !confirmation.historicalZoneConfirmed || !confirmation.replayApproved) throw new Error('La ejecución requiere ambas copias verificadas, zona confirmada y aprobación separada del replay.');
+    const ledger = await db.migrationLedgers.get(accountId);
+    const mapping = ledger?.workouts[localId];
+    const payload = mapping?.snapshotPayload;
+    if (!ledger || !mapping || !payload || mapping.snapshotMode !== 'recovery') throw new Error('Preparar y revisar primero una propuesta histórica individual.');
+    const beforeSend = await db.workoutHistory.get(localId);
+    if (!beforeSend || !sameProposedSnapshot(payload, snapshotPayload(beforeSend, mapping, ledger, payload.calendarZone))) throw new Error('El historial cambió desde la propuesta; revisión requerida antes del envío.');
+    const inspection = (await this.inspectRecovery(accountId, payload.calendarZone, [localId]))[0];
+    if (!inspection || (inspection.classification !== 'A' && inspection.classification !== 'B')) throw new Error('Conciliación ambigua o snapshot remoto diferente; no se autoriza envío.');
+    try {
+      const response = inspection.classification === 'A'
+        ? await firstValueFrom(this.workoutsApi.get(inspection.remoteId!))
+        : await firstValueFrom(this.workoutsApi.createMobile(payload));
+      const current = await db.workoutHistory.get(localId);
+      mapping.serverId = response.id;
+      if (!sameSnapshot(payload, response) || !current || !sameSnapshot(snapshotPayload(current, mapping, ledger, payload.calendarZone), response)) throw new Error('Snapshot remoto o local diferente; conservar datos y revisar sin otro envío.');
+      mapping.status = 'migrated'; delete mapping.recoveryError;
+      for (const remoteSet of response.exercises.flatMap(exercise => exercise.sets)) {
+        const setMapping = Object.values(ledger.sets).find(value => value.clientId === remoteSet.clientId);
+        if (setMapping) { setMapping.status = 'migrated'; setMapping.serverId = remoteSet.id; }
+      }
+    } catch (error) { mapping.recoveryError = errorMessage(error); }
+    await this.save(ledger);
+    if (mapping.recoveryError) throw new Error(mapping.recoveryError);
   }
 
   private async finalize(ledger: MigrationLedger): Promise<void> {
@@ -377,7 +459,6 @@ function mappingOwners(ledgers: MigrationLedger[], section: keyof Pick<Migration
   return new Map([...claims].map(([key, claim]) => [key, claim.accountId]));
 }
 function integerAtLeast(value: number, minimum: number): number { return Number.isInteger(value) && value >= minimum ? value : minimum; }
-function localDateTime(value: string): string { const parsed = new Date(value); if (Number.isNaN(parsed.getTime())) throw new Error('Fecha local no válida'); return toBackendLocalDateTime(parsed); }
 function errorMessage(error: unknown): string { return error instanceof Error ? error.message : 'La solicitud no fue confirmada; se puede reintentar con el mismo clientId.'; }
 function failureStatus(error: unknown): MigrationRecordStatus {
   if (error instanceof HttpErrorResponse && (error.status === 0 || error.status === 408 || error.status === 429 || error.status >= 500)) return 'pending';
@@ -401,3 +482,5 @@ function localExerciseReferences(routines: Routine[]): { key: string; name: stri
     return [reference.key, reference] as const;
   }))).values()];
 }
+
+export interface RecoveryInspection { localId: string; clientId?: string; remoteId?: string; classification: 'A' | 'B' | 'C' | 'D'; reason: string; }

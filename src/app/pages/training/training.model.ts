@@ -3,6 +3,7 @@ export interface ActiveTraining {
   routineId: string;
   routineName: string;
   startedAt: string;
+  calendarZone?: string;
   exercises: {
     exerciseId: string;
     name: string;

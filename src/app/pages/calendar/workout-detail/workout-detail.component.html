@@ -2,7 +2,7 @@
   <header class="record-mast">
     <button type="button" (click)="router.navigate(['/calendar'])">← Historial</button>
     @if (cloudWorkout) {
-      <div><span>REGISTRO DE SESIÓN</span><h1>{{ cloudRoutineName }}</h1><time>{{ (cloudWorkout.completedAt || cloudWorkout.startedAt) | date:'medium' }}</time></div>
+      <div><span>REGISTRO DE SESIÓN</span><h1>{{ cloudRoutineName }}</h1><time>{{ (cloudWorkout.completedAtInstant || cloudWorkout.completedAt || cloudWorkout.startedAtInstant || cloudWorkout.startedAt) | date:'medium' }}</time></div>
       <p>Solo lectura · guardado en tu cuenta</p>
     } @else if (editMode()) {
       <div><span>EDITANDO REGISTRO</span><h1>{{ editedWorkout?.routineName }}</h1><time>{{ editedWorkout?.finishedAt | date:'medium' }}</time></div>
@@ -20,7 +20,7 @@
       <section class="record-ledger" aria-label="Ejercicios registrados">
         @for (ex of cloudWorkout.exercises; track ex.id; let i = $index) {
           <article class="record-exercise">
-            <header><b>{{ (i + 1).toString().padStart(2, '0') }}</b><div><h2>{{ cloudExerciseName(ex.exerciseId) }}</h2>@if (ex.notes) { <p>{{ ex.notes }}</p> }</div></header>
+            <header><b>{{ (i + 1).toString().padStart(2, '0') }}</b><div><h2>{{ ex.exerciseNameSnapshot ?? cloudExerciseName(ex.exerciseId) }}</h2>@if (ex.notes) { <p>{{ ex.notes }}</p> }</div></header>
             <div class="record-table record-table--cloud"><div class="record-table__head"><span>SET</span><span>KG</span><span>REPS</span><span>RPE</span></div>@for (set of ex.sets; track set.id) { <div class="record-row"><span>{{ set.setNumber }}</span><strong>{{ set.weight }}</strong><strong>{{ set.reps }}</strong><strong>{{ set.rpe ?? '—' }}</strong></div> }</div>
           </article>
         }

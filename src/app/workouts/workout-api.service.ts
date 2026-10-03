@@ -4,6 +4,7 @@ import { Observable } from 'rxjs';
 import { environment } from '../../environments/environment';
 import { CreateWorkoutRequest, CreateWorkoutSetRequest, UpdateWorkoutRequest, WorkoutExerciseId, WorkoutId, WorkoutListParams, WorkoutPageResponse, WorkoutResponse, WorkoutSetResponse } from './workout-api.models';
 import { RETRY_SAFE_REQUEST } from '../services/resilient-http.interceptor';
+import { CreateMobileWorkoutRequest } from './workout-api.models';
 
 @Injectable({ providedIn: 'root' })
 export class WorkoutApiService {
@@ -19,6 +20,9 @@ export class WorkoutApiService {
   }
 
   get(id: WorkoutId): Observable<WorkoutResponse> { return this.http.get<WorkoutResponse>(`${this.workoutsUrl}/${id}`); }
+  createMobile(request: CreateMobileWorkoutRequest): Observable<WorkoutResponse> {
+    return this.http.post<WorkoutResponse>(`${this.workoutsUrl}/mobile`, request, { context: new HttpContext().set(RETRY_SAFE_REQUEST, true) });
+  }
   create(request: CreateWorkoutRequest): Observable<WorkoutResponse> { return this.http.post<WorkoutResponse>(this.workoutsUrl, request, { context: new HttpContext().set(RETRY_SAFE_REQUEST, true) }); }
   update(id: WorkoutId, request: UpdateWorkoutRequest): Observable<WorkoutResponse> { return this.http.patch<WorkoutResponse>(`${this.workoutsUrl}/${id}`, request); }
   createSet(workoutId: WorkoutId, workoutExerciseId: WorkoutExerciseId, request: CreateWorkoutSetRequest): Observable<WorkoutSetResponse> {

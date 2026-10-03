@@ -3,6 +3,7 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { TestBed } from '@angular/core/testing';
 import { WorkoutApiService } from './workout-api.service';
 import { CreateWorkoutRequest, WorkoutResponse } from './workout-api.models';
+import { RETRY_SAFE_REQUEST } from '../services/resilient-http.interceptor';
 
 const create: CreateWorkoutRequest = { clientId: 'workout-client-id', routineId: 'routine-uuid', startedAt: '2026-09-10T14:30:00', completedAt: null, notes: null };
 const workout: WorkoutResponse = { id: 'workout-uuid', clientId: create.clientId!, routineId: create.routineId, startedAt: create.startedAt!, completedAt: null, notes: null, createdAt: '2026-09-10T14:30:01', exercises: [{ id: 'workout-exercise-uuid', exerciseId: 'exercise-uuid', position: 0, notes: null, sets: [] }] };
@@ -12,6 +13,16 @@ describe('WorkoutApiService', () => {
   let requests: HttpTestingController;
   beforeEach(() => { TestBed.configureTestingModule({ providers: [provideHttpClient(), provideHttpClientTesting()] }); service = TestBed.inject(WorkoutApiService); requests = TestBed.inject(HttpTestingController); });
   afterEach(() => requests.verify());
+
+  it('posts the exact V15 snapshot atomically with retry-safe identity', () => {
+    const payload = { clientId: '00000000-0000-4000-8000-000000000001', routineId: null, startedAt: '2026-09-10T12:30:00.123Z', completedAt: '2026-09-10T12:40:00.456Z', calendarZone: 'Europe/Madrid', notes: null, nameSnapshot: 'Synthetic', exercises: [{ clientId: '00000000-0000-4000-8000-000000000002', exerciseId: null, exerciseNameSnapshot: 'Historical press', position: 0, notes: 'Synthetic observation', sets: [{ clientId: '00000000-0000-4000-8000-000000000003', setNumber: 1, weight: 12.75, reps: 8, rpe: null }] }] };
+    service.createMobile(payload).subscribe();
+    const call = requests.expectOne('https://gym-tracker-api-s70k.onrender.com/api/workouts/mobile');
+    expect(call.request.method).toBe('POST');
+    expect(call.request.body).toEqual(payload);
+    expect(call.request.context.get(RETRY_SAFE_REQUEST)).toBeTrue();
+    call.flush(workout);
+  });
 
   it('uses only the documented create, set and completion routes', () => {
     service.create(create).subscribe(value => expect(value).toEqual(workout));

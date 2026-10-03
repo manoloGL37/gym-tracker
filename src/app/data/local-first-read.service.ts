@@ -131,6 +131,7 @@ export class LocalFirstReadService {
 
 function representedRemotely<T extends { id: string; clientId: string | null }>(mapping: ResourceMapping | undefined, remote: T[]): boolean {
   if (!mapping) return false;
+  if (mapping.snapshotPayload && mapping.status === 'blocked') return false;
   return remote.some(item => item.id === mapping.serverId || Boolean(item.clientId && item.clientId === mapping.clientId));
 }
 
@@ -154,7 +155,7 @@ function toLocalWorkout(workout: WorkoutHistory, mapping?: ResourceMapping): Wor
 }
 
 function toCloudWorkout(workout: WorkoutResponse, routineName = 'Rutina sin nombre'): WorkoutReadItem {
-  return { source: 'cloud', id: workout.id, routineName, startedAt: workout.startedAt, finishedAt: workout.completedAt, exerciseCount: workout.exercises.length, cloud: workout };
+  return { source: 'cloud', id: workout.id, routineName: workout.nameSnapshot ?? routineName, startedAt: workout.startedAtInstant ?? workout.startedAt, finishedAt: workout.completedAtInstant ?? workout.completedAt, exerciseCount: workout.exercises.length, cloud: workout };
 }
 
 function byNewestWorkout(a: WorkoutReadItem, b: WorkoutReadItem): number {
