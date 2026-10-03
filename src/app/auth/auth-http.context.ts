@@ -5,3 +5,5 @@ export const SKIP_AUTH_INTERCEPTOR = new HttpContextToken<boolean>(() => false);
 
 /** A protected request may be replayed at most once after refreshing its access token. */
 export const AUTH_RETRY_ATTEMPTED = new HttpContextToken<boolean>(() => false);
+/** Recovery requests cannot move to another account during login/refresh. */
+export const EXPECTED_ACCOUNT_ID = new HttpContextToken<string | null>(() => null);

@@ -4,6 +4,7 @@ import { AuthApiService } from '../auth/auth-api.service';
 import { from, of, throwError } from 'rxjs';
 import { db, Routine } from '../data/active-training.repository';
 import { WorkoutHistory } from '../data/workout-history.model';
+import Dexie from 'dexie';
 import { ExerciseApiService } from '../exercises/exercise-api.service';
 import { RoutineApiService } from '../routines/routine-api.service';
 import { WorkoutApiService } from '../workouts/workout-api.service';
@@ -31,6 +32,27 @@ describe('LocalToCloudMigrationService', () => {
   });
 
   afterEach(async () => { await Promise.all([db.routines.clear(), db.workoutHistory.clear(), db.migrationLedgers.clear()]); });
+
+  it('exports a consistent readonly recovery copy without creating ledger or exposing authentication', async () => {
+    const routine = localRoutine('synthetic', 'synthetic');
+    const workout = localWorkout('synthetic', 'synthetic', 'synthetic');
+    await db.routines.put(routine); await db.workoutHistory.put(workout);
+    const originalRead = db.migrationLedgers.toArray.bind(db.migrationLedgers);
+    spyOn(db.migrationLedgers, 'toArray').and.callFake(() => {
+      expect(Dexie.currentTransaction?.mode).toBe('readonly');
+      return originalRead();
+    });
+    spyOn(service, 'getLedger').and.callThrough();
+    const exported = await service.exportRecoveryBackup();
+    expect(exported.stores.workoutHistory).toEqual([workout]);
+    expect(exported.stores.routines).toEqual([routine]);
+    expect(exported.stores.migrationLedgers).toEqual([]);
+    expect(Object.keys(exported.stores).sort()).toEqual(['migrationLedgers', 'routines', 'workoutHistory']);
+    expect(service.getLedger).not.toHaveBeenCalled();
+    expect(await db.migrationLedgers.count()).toBe(0);
+    expect(await db.workoutHistory.get(workout.id)).toEqual(workout);
+    expect(workoutApi.createMobile).not.toHaveBeenCalled();
+  });
 
   async function readyRoutine(routine: Routine): Promise<void> {
     await db.routines.put(routine);
@@ -152,6 +174,7 @@ describe('LocalToCloudMigrationService', () => {
       await service.start('account-a');
       const mapping = (await service.getLedger('account-a')).workouts[workout.id];
       const payload = workoutApi.createMobile.calls.mostRecent().args[0];
+      expect(workoutApi.createMobile.calls.mostRecent().args[1]).toBe('account-a');
       expect(payload).toEqual(mapping.snapshotPayload!);
       expect(payload).toEqual(jasmine.objectContaining({ clientId: mapping.clientId, routineId: null, calendarZone: 'Europe/Madrid', startedAt: workout.startedAt, completedAt: workout.finishedAt, nameSnapshot: 'Local' }));
       expect(payload.exercises[0]).toEqual(jasmine.objectContaining({ exerciseId: null, exerciseNameSnapshot: 'Press', position: 0, notes: 'Historical note' }));
@@ -337,7 +360,7 @@ describe('LocalToCloudMigrationService', () => {
     workoutApi.get.and.returnValue(of(remote));
     await service.start('account-a'); // Does NOT replay the prepared recovery.
     await service.recoverPreparedWorkout('account-a', workout.id, { backupsVerified: true, historicalZoneConfirmed: true, replayApproved: true });
-    expect(workoutApi.createMobile).toHaveBeenCalledOnceWith(payload);
+    expect(workoutApi.createMobile).toHaveBeenCalledOnceWith(payload, 'account-a');
     expect((await service.getLedger('account-a')).workouts[workout.id].status).toBe('migrated');
     expect(await db.workoutHistory.get(workout.id)).toEqual(workout);
   });

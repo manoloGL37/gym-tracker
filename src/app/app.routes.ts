@@ -31,6 +31,7 @@ export const routes: Routes = [
       { path: 'exercise-catalog', loadComponent: () => import('./pages/exercise-catalog/exercise-catalog.component').then(m => m.ExerciseCatalogComponent), title: 'Exercise Catalog' },
       { path: 'training', component: TrainingComponent, title: 'Training' },
       { path: 'settings', loadComponent: () => import('./pages/settings/settings.component').then(m => m.SettingsComponent), title: 'Settings' },
+      { path: 'settings/sync-recovery', loadComponent: () => import('./pages/sync-recovery/sync-recovery.component').then(m => m.SyncRecoveryComponent), title: 'Revisar sincronización' },
       { path: '', redirectTo: 'home', pathMatch: 'full' },
     ],
   },

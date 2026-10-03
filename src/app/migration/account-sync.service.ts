@@ -22,6 +22,7 @@ export class AccountSyncService implements OnDestroy {
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
   private running: Promise<void> | null = null;
   private hasPendingWork = false;
+  private recoveryPaused = 0;
   private readonly onlineListener = () => this.resumePendingSync();
   private readonly visibilityListener = () => {
     if (globalThis.document?.visibilityState === 'visible') this.resumePendingSync();
@@ -56,11 +57,11 @@ export class AccountSyncService implements OnDestroy {
       this.stop();
       this.accountId = accountId;
     }
-    if (!this.running && !this.retryTimer) void this.run();
+    if (!this.recoveryPaused && !this.running && !this.retryTimer) void this.run();
   }
 
   retryNow(): void {
-    if (!this.accountId || this.running) return;
+    if (this.recoveryPaused || !this.accountId || this.running) return;
     this.clearRetry();
     void this.run();
   }
@@ -75,6 +76,19 @@ export class AccountSyncService implements OnDestroy {
   /** Connectivity and foreground are hints: only resume work known to be pending. */
   resumePendingSync(): void {
     if (this.hasPendingWork) this.retryNow();
+  }
+
+  /** Drain the current pass before the recovery page takes the cross-tab lock. */
+  async pauseForRecovery(): Promise<void> {
+    this.recoveryPaused++;
+    this.clearRetry();
+    await this.running;
+    this.clearRetry();
+  }
+
+  resumeAfterRecovery(): void {
+    this.recoveryPaused = Math.max(0, this.recoveryPaused - 1);
+    if (!this.recoveryPaused && this.accountId) this.retryNow();
   }
 
   stop(): void {
@@ -166,6 +180,7 @@ export class AccountSyncService implements OnDestroy {
 
   private scheduleRetry(runId: number): void {
     this.clearRetry();
+    if (this.recoveryPaused) return;
     // ponytail: bounded exponential backoff capped at one minute; online events can retry sooner.
     const delay = Math.min(60_000, 5_000 * 3 ** Math.min(this.retryAttempt - 1, 3));
     this.retryTimer = setTimeout(() => {

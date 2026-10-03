@@ -1,6 +1,6 @@
 import { Injectable, Injector, inject, signal } from '@angular/core';
 import { HttpErrorResponse } from '@angular/common/http';
-import { firstValueFrom } from 'rxjs';
+import { firstValueFrom, timeout } from 'rxjs';
 import { ActiveTrainingRepository, db, Routine, RoutinesRepository, WorkoutHistoryRepository } from '../data/active-training.repository';
 import { WorkoutHistory } from '../data/workout-history.model';
 import { BodyWeightRepository } from '../data/body-weight.repository';
@@ -138,6 +138,10 @@ export class LocalToCloudMigrationService {
   }
 
   async start(accountId: string): Promise<MigrationLedger> {
+    return navigator.locks ? navigator.locks.request('gym-tracker-ledger', () => this.synchronize(accountId)) : this.synchronize(accountId);
+  }
+
+  private async synchronize(accountId: string): Promise<MigrationLedger> {
     const ledger = await this.getLedger(accountId);
     const [localRoutines, localWorkouts] = await Promise.all([RoutinesRepository.getAll(), WorkoutHistoryRepository.getAll()]);
     const runnable = [...Object.values(ledger.exercises), ...Object.values(ledger.routines)].some(mapping => mapping.status === 'pending') ||
@@ -294,7 +298,7 @@ export class LocalToCloudMigrationService {
           mapping.snapshotMode = 'new';
           await this.save(ledger); // identity AND exact body durable before any recoverable POST
         }
-        const response = await firstValueFrom(this.workoutsApi.createMobile(mapping.snapshotPayload));
+        const response = await firstValueFrom(this.workoutsApi.createMobile(mapping.snapshotPayload, ledger.accountId));
         mapping.serverId = response.id;
         const current = await db.workoutHistory.get(workout.id);
         if (!sameSnapshot(mapping.snapshotPayload, response) || !current ||
@@ -321,18 +325,21 @@ export class LocalToCloudMigrationService {
       db.migrationLedgers.get(accountId), WorkoutHistoryRepository.getAll(), this.getOwnership(),
     ]);
     const verifyAccount = async () => {
-      if ((await firstValueFrom(this.injector.get(AuthApiService).getCurrentUser())).id !== accountId) throw new Error('La cuenta autenticada no coincide; conciliación cancelada.');
+      if ((await firstValueFrom(this.injector.get(AuthApiService).getCurrentUser().pipe(timeout(30_000)))).id !== accountId) throw new Error('La cuenta autenticada no coincide; conciliación cancelada.');
     };
     const remote: WorkoutResponse[] = [];
     let expectedTotal: number | undefined;
     let page = 0;
     while (true) {
       await verifyAccount();
-      const result = await firstValueFrom(this.workoutsApi.list({ page, size: 50, sort: 'id,asc' }));
+      const result = await firstValueFrom(this.workoutsApi.list({ page, size: 50, sort: 'id,asc' }, accountId).pipe(timeout(30_000)));
       expectedTotal ??= result.totalElements;
       if (result.totalElements !== expectedTotal) throw new Error('El historial remoto cambió; repetir conciliación.');
       if (result.number !== page) throw new Error('Paginación remota incoherente; conciliación cancelada.');
-      for (const value of result.content) remote.push(await firstValueFrom(this.workoutsApi.get(value.id)));
+      for (const value of result.content) {
+        const relevant = !localIds || localIds.some(id => ledger?.workouts[id]?.clientId === value.clientId || ledger?.workouts[id]?.serverId === value.id);
+        remote.push(relevant ? await firstValueFrom(this.workoutsApi.get(value.id, accountId).pipe(timeout(30_000))) : value);
+      }
       if (result.last) break;
       if (!result.content.length || ++page >= result.totalPages) throw new Error('Listado remoto incompleto; conciliación cancelada.');
     }
@@ -343,6 +350,7 @@ export class LocalToCloudMigrationService {
       const mapping = ledger?.workouts[workout.id];
       const row: RecoveryInspection = { localId: workout.id, clientId: mapping?.clientId, remoteId: mapping?.serverId, classification: 'D', reason: 'Sin identidad persistida; revisión manual necesaria.' };
       if (!mapping || !ledger) return row;
+      if (mapping.snapshotPayload && mapping.snapshotPayload.calendarZone !== confirmedZone) return { ...row, reason: 'La propuesta guardada tiene otra zona histórica. Confirma esa zona o solicita revisión.' };
       let payload;
       try { payload = mapping.snapshotPayload ?? snapshotPayload(workout, mapping, ledger, confirmedZone); }
       catch (error) { return { ...row, reason: errorMessage(error) }; }
@@ -378,7 +386,7 @@ export class LocalToCloudMigrationService {
     // Preparation never sends. Execution is a separate explicitly approved call.
   }
 
-  /** Single-record recovery; never called by startup, timers, settings or normal sync. */
+  /** Single-record recovery, only from explicit confirmation; never startup/timers/normal sync. */
   async recoverPreparedWorkout(accountId: string, localId: string, confirmation: { backupsVerified: boolean; historicalZoneConfirmed: boolean; replayApproved: boolean }): Promise<void> {
     if (!confirmation.backupsVerified || !confirmation.historicalZoneConfirmed || !confirmation.replayApproved) throw new Error('La ejecución requiere ambas copias verificadas, zona confirmada y aprobación separada del replay.');
     const ledger = await db.migrationLedgers.get(accountId);
@@ -391,8 +399,8 @@ export class LocalToCloudMigrationService {
     if (!inspection || (inspection.classification !== 'A' && inspection.classification !== 'B')) throw new Error('Conciliación ambigua o snapshot remoto diferente; no se autoriza envío.');
     try {
       const response = inspection.classification === 'A'
-        ? await firstValueFrom(this.workoutsApi.get(inspection.remoteId!))
-        : await firstValueFrom(this.workoutsApi.createMobile(payload));
+        ? await firstValueFrom(this.workoutsApi.get(inspection.remoteId!, accountId).pipe(timeout(30_000)))
+        : await firstValueFrom(this.workoutsApi.createMobile(payload, accountId).pipe(timeout(45_000)));
       const current = await db.workoutHistory.get(localId);
       mapping.serverId = response.id;
       if (!sameSnapshot(payload, response) || !current || !sameSnapshot(snapshotPayload(current, mapping, ledger, payload.calendarZone), response)) throw new Error('Snapshot remoto o local diferente; conservar datos y revisar sin otro envío.');
@@ -413,6 +421,14 @@ export class LocalToCloudMigrationService {
     else if (all.some(mapping => mapping.status === 'unsupported')) ledger.status = 'completed-local-only';
     else ledger.status = 'completed';
     await this.save(ledger);
+  }
+
+  /** One consistent readonly capture. No caches, auth storage, creation or migration. */
+  async exportRecoveryBackup() {
+    return db.transaction('r', db.workoutHistory, db.routines, db.migrationLedgers, async () => ({
+      app: 'gym-tracker-sync-recovery', schemaVersion: 1, exportedAt: new Date().toISOString(),
+      stores: { workoutHistory: await db.workoutHistory.toArray(), routines: await db.routines.toArray(), migrationLedgers: await db.migrationLedgers.toArray() },
+    }));
   }
 
   private async referenceByKey(key: string): Promise<{ key: string; name: string } | null> {

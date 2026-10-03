@@ -1,5 +1,7 @@
 # Corrección del sincronizador PWA: snapshots V15
 
+> Continuación: [PWA_SYNC_SELF_SERVICE.md](PWA_SYNC_SELF_SERVICE.md) incorpora la recuperación desde Ajustes con copia descargable verificada, revisión y confirmación separada. Las instrucciones USB/consola de esta fase anterior son opcionales; no se requieren para el nuevo flujo. La continuación tampoco está desplegada ni ejecutada sobre datos reales.
+
 Fecha: 03/10/2026. Rama: `fix/pwa-historical-snapshot-sync`. Implementación local; no desplegada, sin push/merge ni recuperación productiva. Backend y Android sin modificaciones. Los resultados anteriores de investigación se conservan en `PWA_SYNC_RECOVERY_AUDIT.md` como evidencia del código anterior.
 
 ## Cambios exactos

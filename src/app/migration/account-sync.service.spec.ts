@@ -173,6 +173,23 @@ describe('AccountSyncService', () => {
 
     expect(migration.start).toHaveBeenCalledTimes(2);
   });
+
+  it('drains normal sync and blocks login/online retries while recovery is open', async () => {
+    let release!: () => void;
+    migration.start.and.returnValue(new Promise(resolve => release = () => resolve({} as any)));
+    service.start('account-a');
+    let paused = false;
+    const pause = service.pauseForRecovery().then(() => paused = true);
+    await flushPromises(); expect(paused).toBeFalse();
+    service.start('account-a'); service.retryNow(); service.notifyPendingWork();
+    expect(migration.start).toHaveBeenCalledTimes(1);
+    release(); await pause; expect(paused).toBeTrue();
+    service.retryNow(); service.resumePendingSync();
+    expect(migration.start).toHaveBeenCalledTimes(1);
+    migration.start.and.resolveTo({} as any);
+    service.resumeAfterRecovery();
+    expect(migration.start).toHaveBeenCalledTimes(2);
+  });
 });
 
 async function flushPromises(): Promise<void> {

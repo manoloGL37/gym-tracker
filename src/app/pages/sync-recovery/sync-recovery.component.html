@@ -1,0 +1,61 @@
+<div class="recovery-page">
+  <header><a routerLink="/settings">Volver a Ajustes</a><h1>Revisar sincronización</h1><p>Recupera tus entrenamientos históricos en tu cuenta, conservando sus fechas y lo que realizaste.</p></header>
+  <main>
+    @if (!auth.isAuthenticated()) { <p role="alert">Necesitas tu cuenta conectada para revisar la sincronización.</p><a routerLink="/login">Conectar mi cuenta</a> }
+    @else {
+      <p class="account">Cuenta: <strong>{{ auth.currentUser()?.email }}</strong></p>
+      <p>El aviso de Ajustes cuenta tareas de sincronización, incluidas rutinas y ejercicios. Aquí revisamos entrenamientos completos.</p>
+      <section aria-labelledby="backup-title">
+        <h2 id="backup-title">1. Guarda una copia de recuperación</h2>
+        <p>Incluye tus entrenamientos, rutinas y registros de sincronización. Guárdala junto a tu copia anterior de entrenamientos.</p>
+        <div class="backup-actions"><button type="button" (click)="downloadBackup()" [disabled]="!ready() || busy()">Descargar copia de recuperación</button>
+          @if (backupDownloaded()) { <label class="file-action">Comprobar copia descargada<input type="file" accept="application/json,.json" (change)="verifyBackup($event)" [disabled]="busy()" /></label> }
+        </div>
+        @if (backupDownloaded()) {
+          <p>Selecciona el archivo de recuperación más reciente en Descargas. Solo comprobaremos que se guardó completo.</p>
+        }
+        @if (backupVerified()) { <p class="verified">Copia completa verificada.</p> }
+      </section>
+      <section aria-labelledby="zone-title">
+        <h2 id="zone-title">2. Confirma cuándo y dónde entrenaste</h2>
+        <label class="field">Zona horaria de estos entrenamientos<input list="historical-zones" [(ngModel)]="zone" (ngModelChange)="zoneConfirmed = false; clearReview()" [disabled]="busy()" autocomplete="off" placeholder="Ejemplo: Europe/Madrid" /></label>
+        <datalist id="historical-zones"><option value="Europe/Madrid">España peninsular</option><option value="Atlantic/Canary">Canarias</option><option value="UTC">UTC</option><option value="Europe/London">Reino Unido</option><option value="America/Mexico_City">Ciudad de México</option><option value="America/Argentina/Buenos_Aires">Buenos Aires</option></datalist>
+        <p>Las horas originales se conservan. Si entrenaste en distintas zonas durante viajes, revisa cada periodo por separado. Si no conoces la zona, deja esas sesiones para revisión.</p>
+        <div class="dates"><label class="field">Desde (opcional)<input type="date" [(ngModel)]="fromDate" (ngModelChange)="zoneConfirmed = false; clearReview()" [disabled]="busy()" /></label><label class="field">Hasta (opcional)<input type="date" [(ngModel)]="toDate" (ngModelChange)="zoneConfirmed = false; clearReview()" [disabled]="busy()" /></label></div>
+        <label class="check"><input type="checkbox" [(ngModel)]="zoneConfirmed" (ngModelChange)="clearReview()" [disabled]="busy() || !zone" /><span>Confirmo que esta zona corresponde a las sesiones del periodo elegido.</span></label>
+        <button type="button" (click)="review()" [disabled]="!canReview()">Revisar sincronización</button>
+        <p>La revisión consulta tu cuenta y no envía entrenamientos.</p>
+      </section>
+      @if (rows().length) {
+        <section aria-labelledby="results-title">
+          <h2 id="results-title">3. Revisa los resultados</h2>
+          <dl class="summary">@for (group of groups; track group.kind) { <div><dt>{{ group.title }}</dt><dd>{{ count(group.kind) }}</dd></div> }</dl>
+          @for (group of groups; track group.kind) {
+            @if (count(group.kind)) {
+              <details [open]="group.kind === 'B'"><summary>{{ group.title }} · {{ count(group.kind) }}</summary><p>{{ group.explanation }}</p>
+                <ul>@for (row of groupRows(group.kind); track row.localId) {
+                  <li>
+                    @if (row.classification === 'B' || row.confirmOnly) { <label class="check"><input type="checkbox" [checked]="selected().includes(row.localId)" (change)="toggle(row.localId, $any($event.target).checked)" [disabled]="busy()" /><span><strong>{{ row.name }}</strong><time>{{ date(row.startedAt) }}</time>@if (row.confirmOnly) { <small>Ya recuperado. Confirmaremos el enlace sin enviarlo otra vez.</small> }</span></label> }
+                    @else { <strong>{{ row.name }}</strong><time>{{ date(row.startedAt) }}</time> }
+                    @if (row.classification === 'D') { <p>{{ row.reason }}</p> }
+                  </li>
+                }</ul>
+              </details>
+            }
+          }
+          @if (selected().length) {
+            <p>{{ selected().length }} sesiones seleccionadas. Se enviarán únicamente las ausentes confirmadas; las ya recuperadas se comprobarán sin reenviarlas.</p>
+            <button type="button" (click)="confirm.set(true)" [disabled]="busy() || !locksSupported">Recuperar entrenamientos pendientes</button>
+            @if (confirm()) { <div class="confirmation"><h3>Confirmar recuperación</h3><p>Conservaremos fechas, ejercicios, series realizadas y observaciones de las sesiones seleccionadas. Mantén esta pantalla abierta y evita editar entrenamientos o cambiar de cuenta durante el proceso.</p><button type="button" (click)="recover()" [disabled]="busy()">Confirmar y recuperar {{ selected().length }} sesiones</button><button class="secondary" type="button" (click)="confirm.set(false)" [disabled]="busy()">Volver a revisar</button></div> }
+          }
+        </section>
+      }
+      @if (!locksSupported) { <p role="alert">Para recuperar desde el teléfono necesitas un navegador actualizado con protección frente a envíos simultáneos. Puedes guardar tu copia y revisar los datos.</p> }
+    }
+    <div class="feedback" id="recovery-feedback" aria-live="polite" aria-atomic="true">
+      @if (message()) { <p>{{ message() }}</p> }
+      @if (recovering()) { <progress [value]="processed()" [max]="target() || 1" aria-label="Progreso de recuperación"></progress><p>{{ processed() }} de {{ target() }} sesiones confirmadas</p><button class="secondary" type="button" (click)="stopped.set(true)" [disabled]="stopped()">Detener después de esta sesión</button> }
+    </div>
+    @if (error()) { <p class="error" role="alert">{{ error() }}</p> }
+  </main>
+</div>

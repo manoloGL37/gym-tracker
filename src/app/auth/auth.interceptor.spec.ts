@@ -1,4 +1,5 @@
-import { HttpClient, HttpErrorResponse, provideHttpClient, withInterceptors } from '@angular/common/http';
+import { HttpClient, HttpContext, HttpErrorResponse, provideHttpClient, withInterceptors } from '@angular/common/http';
+import { EXPECTED_ACCOUNT_ID } from './auth-http.context';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { signal } from '@angular/core';
 import { fakeAsync, flushMicrotasks, TestBed } from '@angular/core/testing';
@@ -14,6 +15,8 @@ describe('authInterceptor', () => {
     accessToken: ReturnType<typeof signal<string | null>>;
     refreshAccessToken: jasmine.Spy<() => Promise<string>>;
     invalidateSession: jasmine.Spy<() => void>;
+    currentUser: ReturnType<typeof signal<{ id: string } | null>>;
+    isAuthenticated: () => boolean;
   };
 
   beforeEach(() => {
@@ -21,6 +24,8 @@ describe('authInterceptor', () => {
       accessToken: signal<string | null>('access-token'),
       refreshAccessToken: jasmine.createSpy('refreshAccessToken'),
       invalidateSession: jasmine.createSpy('invalidateSession'),
+      currentUser: signal<{ id: string } | null>({ id: 'account-a' }),
+      isAuthenticated: () => true,
     };
     TestBed.configureTestingModule({
       providers: [
@@ -34,6 +39,22 @@ describe('authInterceptor', () => {
   });
 
   afterEach(() => requests.verify());
+
+  it('prevents recovery transmission to a different account', () => {
+    session.currentUser.set({ id: 'account-b' });
+    let failed = false;
+    http.post(apiUrl, { synthetic: true }, { context: new HttpContext().set(EXPECTED_ACCOUNT_ID, 'account-a') }).subscribe({ error: () => failed = true });
+    requests.expectNone(apiUrl); expect(failed).toBeTrue();
+  });
+
+  it('does not retry a recovery request after refresh switches accounts', fakeAsync(() => {
+    session.refreshAccessToken.and.resolveTo('synthetic-fresh-token');
+    let failed = false;
+    http.post(apiUrl, { synthetic: true }, { context: new HttpContext().set(EXPECTED_ACCOUNT_ID, 'account-a') }).subscribe({ error: () => failed = true });
+    requests.expectOne(apiUrl).flush(null, { status: 401, statusText: 'Unauthorized' });
+    session.currentUser.set({ id: 'account-b' }); flushMicrotasks();
+    requests.expectNone(apiUrl); expect(failed).toBeTrue();
+  }));
 
   it('adds bearer only to the configured API and never credentials globally', () => {
     http.get(apiUrl).subscribe();

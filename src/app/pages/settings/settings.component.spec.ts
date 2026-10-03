@@ -61,6 +61,7 @@ describe('SettingsComponent account data status', () => {
     fixture.detectChanges();
     const text = fixture.nativeElement.textContent as string;
     expect(text).toContain('Tus datos');
+    expect(fixture.nativeElement.querySelector('a[href="/settings/sync-recovery"]')?.textContent).toContain('Revisar sincronización');
     expect(text).toContain('Tus datos están sincronizados');
     expect(text).not.toContain('Guardar datos en tu cuenta');
     expect(text).not.toContain('Ahora no');
