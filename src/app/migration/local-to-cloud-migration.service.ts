@@ -30,15 +30,17 @@ export class LocalToCloudMigrationService {
   readonly changes = signal(0);
 
   async getLedger(accountId: string): Promise<MigrationLedger> {
-    const existing = await db.migrationLedgers.get(accountId);
-    if (existing) return existing;
-    const now = new Date().toISOString();
-    const ledger: MigrationLedger = {
-      accountId, status: 'available', postponed: false, createdAt: now, updatedAt: now,
-      defaults: { targetReps: 10, restSeconds: 90 }, exercises: {}, routines: {}, workouts: {}, sets: {},
-    };
-    await db.migrationLedgers.put(ledger);
-    return ledger;
+    return db.transaction('rw', db.migrationLedgers, async () => {
+      const existing = await db.migrationLedgers.get(accountId);
+      if (existing) return existing;
+      const now = new Date().toISOString();
+      const ledger: MigrationLedger = {
+        accountId, status: 'available', postponed: false, createdAt: now, updatedAt: now,
+        defaults: { targetReps: 10, restSeconds: 90 }, exercises: {}, routines: {}, workouts: {}, sets: {},
+      };
+      await db.migrationLedgers.put(ledger);
+      return ledger;
+    });
   }
 
   async getPreview(accountId: string): Promise<MigrationPreview> {
@@ -60,16 +62,22 @@ export class LocalToCloudMigrationService {
   }
 
   async postpone(accountId: string): Promise<void> {
-    const ledger = await this.getLedger(accountId);
-    ledger.postponed = true; ledger.status = 'postponed';
-    await this.save(ledger);
+    if (!navigator.locks) throw new Error('Se necesita un navegador con Web Locks.');
+    await navigator.locks.request('gym-tracker-ledger', async () => {
+      const ledger = await this.getLedger(accountId);
+      ledger.postponed = true; ledger.status = 'postponed';
+      await this.save(ledger);
+    });
   }
 
   async setDefaults(accountId: string, targetReps: number, restSeconds: number): Promise<void> {
-    if (!Number.isInteger(targetReps) || targetReps < 1 || !Number.isInteger(restSeconds) || restSeconds < 0) throw new Error('Invalid routine defaults');
-    const ledger = await this.getLedger(accountId);
-    ledger.defaults = { targetReps, restSeconds };
-    await this.save(ledger);
+    if (!navigator.locks) throw new Error('Se necesita un navegador con Web Locks.');
+    await navigator.locks.request('gym-tracker-ledger', async () => {
+      if (!Number.isInteger(targetReps) || targetReps < 1 || !Number.isInteger(restSeconds) || restSeconds < 0) throw new Error('Invalid routine defaults');
+      const ledger = await this.getLedger(accountId);
+      ledger.defaults = { targetReps, restSeconds };
+      await this.save(ledger);
+    });
   }
 
   async searchExercises(query: string): Promise<ExerciseResponse[]> {
@@ -118,30 +126,164 @@ export class LocalToCloudMigrationService {
   }
 
   async chooseCatalogExercise(accountId: string, localKey: string, exercise: ExerciseResponse): Promise<void> {
-    const ledger = await this.getLedger(accountId);
-    const reference = await this.referenceByKey(localKey);
-    if (!reference) throw new Error('Local exercise reference no longer exists');
-    ledger.exercises[localKey] = { localKey, name: reference.name, choice: 'catalog', serverId: exercise.id, status: 'migrated', claimedAt: new Date().toISOString() };
-    await this.save(ledger);
+    if (!navigator.locks) throw new Error('Se necesita un navegador con Web Locks.');
+    await navigator.locks.request('gym-tracker-ledger', async () => {
+      const ledger = await this.getLedger(accountId);
+      const reference = await this.referenceByKey(localKey);
+      if (!reference) throw new Error('Local exercise reference no longer exists');
+      ledger.exercises[localKey] = { localKey, name: reference.name, choice: 'catalog', serverId: exercise.id, status: 'migrated', claimedAt: new Date().toISOString() };
+      await this.save(ledger);
+    });
   }
 
   async chooseCustomExercise(accountId: string, localKey: string): Promise<void> {
-    const ledger = await this.getLedger(accountId);
-    const reference = await this.referenceByKey(localKey);
-    if (!reference || !reference.name.trim()) throw new Error('A custom exercise needs a name');
-    const previous = ledger.exercises[localKey];
-    ledger.exercises[localKey] = {
-      localKey, name: reference.name, choice: 'custom', clientId: previous?.clientId ?? crypto.randomUUID(), status: 'pending',
-      claimedAt: previous?.claimedAt ?? new Date().toISOString(),
-    };
-    await this.save(ledger);
+    if (!navigator.locks) throw new Error('Se necesita un navegador con Web Locks.');
+    await navigator.locks.request('gym-tracker-ledger', async () => {
+      const ledger = await this.getLedger(accountId);
+      const reference = await this.referenceByKey(localKey);
+      if (!reference || !reference.name.trim()) throw new Error('A custom exercise needs a name');
+      const previous = ledger.exercises[localKey];
+      ledger.exercises[localKey] = {
+        localKey, name: reference.name, choice: 'custom', clientId: previous?.clientId ?? crypto.randomUUID(), status: 'pending',
+        claimedAt: previous?.claimedAt ?? new Date().toISOString(),
+      };
+      await this.save(ledger);
+    });
   }
 
   async start(accountId: string): Promise<MigrationLedger> {
     return navigator.locks ? navigator.locks.request('gym-tracker-ledger', () => this.synchronize(accountId)) : this.synchronize(accountId);
   }
 
-  private async synchronize(accountId: string): Promise<MigrationLedger> {
+  /** Normal authenticated lifecycle. The legacy entry point remains for optional advanced tools. */
+  async synchronizeAccount(accountId: string): Promise<MigrationLedger> {
+    if (!navigator.locks) throw new Error('Este navegador no permite sincronizar de forma segura entre ventanas.');
+    return navigator.locks.request('gym-tracker-ledger', async () => {
+      if (!navigator.onLine) throw new Error('Sin conexión; los datos siguen guardados.');
+      const ledger = await this.getLedger(accountId);
+      if (ledger.syncRetry && (ledger.syncRetry.attempts >= 5 || ledger.syncRetry.nextAttemptAt > Date.now())) throw new Error('Esperando el siguiente reintento seguro.');
+      try {
+        await this.verifyAccount(accountId);
+        await this.ensureClientIds(ledger, await this.getOwnership());
+        await this.synchronizeHistoricalWorkouts(ledger);
+        await this.synchronize(accountId, true);
+        const current = await this.getLedger(accountId);
+        delete current.syncRetry;
+        await this.save(current);
+        return current;
+      } catch (error) {
+        // Reload: completed operations must survive a later failed read in this pass.
+        const current = await this.getLedger(accountId);
+        const attempts = (current.syncRetry?.attempts ?? 0) + 1;
+        current.syncRetry = { attempts, nextAttemptAt: Date.now() + Math.min(60_000, 5_000 * 3 ** (attempts - 1)) };
+        await this.save(current);
+        throw error;
+      }
+    });
+  }
+
+  private async verifyAccount(accountId: string): Promise<void> {
+    if ((await firstValueFrom(this.injector.get(AuthApiService).getCurrentUser().pipe(timeout(30_000)))).id !== accountId) throw new Error('La cuenta cambió; sincronización cancelada.');
+  }
+
+  async historicalZoneNeeds(accountId: string): Promise<WorkoutHistory[]> {
+    const ledger = await this.getLedger(accountId);
+    return (await this.getAccountLocalWorkouts(accountId)).filter(workout => Boolean(ledger.workouts[workout.id]) && !workout.calendarZone && !ledger.workouts[workout.id]?.historicalZone && !ledger.workouts[workout.id]?.snapshotPayload);
+  }
+
+  async confirmHistoricalZone(accountId: string, zone: string, localIds: readonly string[]): Promise<void> {
+    validateCalendarZone(zone);
+    if (!navigator.locks) throw new Error('Se necesita un navegador con Web Locks.');
+    await navigator.locks.request('gym-tracker-ledger', async () => {
+      await this.verifyAccount(accountId);
+      const ledger = await this.getLedger(accountId);
+      const needs = await this.historicalZoneNeeds(accountId);
+      for (const workout of needs.filter(value => localIds.includes(value.id))) {
+        // A missing legacy identity remains ambiguous; confirmation never invents identity.
+        const mapping = ledger.workouts[workout.id];
+        if (mapping) mapping.historicalZone = zone;
+      }
+      await this.save(ledger);
+    });
+  }
+
+  async resetAutomaticRetries(accountId: string): Promise<void> {
+    if (!navigator.locks) return;
+    await navigator.locks.request('gym-tracker-ledger', async () => {
+      const ledger = await this.getLedger(accountId);
+      delete ledger.syncRetry;
+      for (const mapping of Object.values(ledger.workouts)) {
+        if (mapping.automaticSync?.classification === 'B') {
+          mapping.automaticSync.attempts = 0;
+          delete mapping.automaticSync.nextAttemptAt;
+        }
+      }
+      await this.save(ledger);
+    });
+  }
+
+  private async synchronizeHistoricalWorkouts(ledger: MigrationLedger): Promise<void> {
+    const workouts = await this.getAccountLocalWorkouts(ledger.accountId);
+    const zones = new Map<string, string[]>();
+    for (const workout of workouts) {
+      const mapping = ledger.workouts[workout.id];
+      if (!mapping) continue; // No legacy identity: absence cannot be proved safely.
+      mapping.automaticSync ??= { attempts: 0, originalStatus: mapping.status, originalError: mapping.error };
+      const zone = mapping.snapshotPayload?.calendarZone ?? workout.calendarZone ?? mapping.historicalZone;
+      const ids = zones.get(zone ?? '') ?? [];
+      ids.push(workout.id); zones.set(zone ?? '', ids);
+    }
+    await this.save(ledger);
+    // ponytail: one complete paginated read per zone; add a server snapshot cursor if history grows large.
+    for (const [groupZone, ids] of zones) {
+      const inspections = await this.inspectRecovery(ledger.accountId, groupZone || undefined, ids);
+      for (const inspection of inspections) {
+        const zone = inspection.calendarZone ?? groupZone;
+        const mapping = ledger.workouts[inspection.localId];
+        const journal = mapping.automaticSync!;
+        journal.classification = inspection.classification;
+        if (inspection.classification === 'C' || inspection.classification === 'D') {
+          mapping.status = 'blocked'; mapping.recoveryError = inspection.reason;
+          await this.save(ledger); continue;
+        }
+        if (inspection.classification === 'B' && (journal.attempts >= 5 || (journal.nextAttemptAt ?? 0) > Date.now())) {
+          mapping.status = journal.attempts >= 5 ? 'failed' : 'pending';
+          await this.save(ledger); continue;
+        }
+        await this.verifyAccount(ledger.accountId);
+        try {
+          const workout = await db.workoutHistory.get(inspection.localId);
+          if (!workout) throw new Error('El historial local ya no existe; no enviar.');
+          const proposed = snapshotPayload(workout, mapping, ledger, zone);
+          if (mapping.snapshotPayload && !sameProposedSnapshot(mapping.snapshotPayload, proposed)) throw new Error('El historial cambió desde la propuesta; requiere atención.');
+          mapping.snapshotPayload ??= proposed;
+          mapping.snapshotMode ??= 'recovery';
+          journal.attempts++;
+          journal.nextAttemptAt = Date.now() + Math.min(60_000, 5_000 * 3 ** (journal.attempts - 1));
+          await this.save(ledger); // Exact payload, identity and retry budget durable BEFORE transmission.
+          const response = inspection.classification === 'A'
+            ? await firstValueFrom(this.workoutsApi.get(inspection.remoteId!, ledger.accountId).pipe(timeout(30_000)))
+            : await firstValueFrom(this.workoutsApi.createMobile(mapping.snapshotPayload, ledger.accountId).pipe(timeout(45_000)));
+          const current = await db.workoutHistory.get(inspection.localId);
+          if (typeof response.id !== 'string' || !response.id.trim() || response.clientId !== mapping.clientId || (mapping.serverId && mapping.serverId !== response.id) || !sameSnapshot(mapping.snapshotPayload, response) || !current || !sameSnapshot(snapshotPayload(current, mapping, ledger, zone), response)) throw new Error('Identidad o snapshot diferente; no reenviar ni sobrescribir.');
+          mapping.serverId = response.id; mapping.status = 'migrated';
+          journal.classification = 'A'; journal.confirmedAt = new Date().toISOString();
+          delete journal.nextAttemptAt; delete mapping.recoveryError;
+          for (const remoteSet of response.exercises.flatMap(value => value.sets)) {
+            const setMapping = Object.values(ledger.sets).find(value => value.clientId === remoteSet.clientId);
+            if (setMapping) { setMapping.status = 'migrated'; setMapping.serverId = remoteSet.id; }
+          }
+        } catch (error) {
+          mapping.status = failureStatus(error);
+          if (journal.attempts >= 5) mapping.status = 'failed';
+          mapping.recoveryError = errorMessage(error);
+        }
+        await this.save(ledger);
+      }
+    }
+  }
+
+  private async synchronize(accountId: string, automatic = false): Promise<MigrationLedger> {
     const ledger = await this.getLedger(accountId);
     const [localRoutines, localWorkouts] = await Promise.all([RoutinesRepository.getAll(), WorkoutHistoryRepository.getAll()]);
     const runnable = [...Object.values(ledger.exercises), ...Object.values(ledger.routines)].some(mapping => mapping.status === 'pending') ||
@@ -161,7 +303,7 @@ export class LocalToCloudMigrationService {
     ledger.status = 'migrating'; await this.save(ledger);
     await this.migrateResolvedExercises(ledger);
     await this.migrateRoutines(ledger, ownership);
-    await this.migrateWorkouts(ledger, ownership);
+    if (!automatic) await this.migrateWorkouts(ledger, ownership);
     await this.finalize(ledger);
     return ledger;
   }
@@ -176,6 +318,7 @@ export class LocalToCloudMigrationService {
 
   async getProgress(accountId: string): Promise<{ completed: number; total: number; pending: number; pendingWorkouts: number; attention: number }> {
     const [ledger, unresolved] = await Promise.all([this.getLedger(accountId), this.unresolvedReferences(accountId)]);
+    const unclaimed = (await this.getAccountLocalWorkouts(accountId)).filter(value => !ledger.workouts[value.id]).length;
     const records = [
       ...Object.values(ledger.exercises),
       ...Object.values(ledger.routines),
@@ -190,11 +333,11 @@ export class LocalToCloudMigrationService {
     const supported = records.filter(record => record.status !== 'unsupported');
     return {
       completed: supported.filter(record => record.status === 'migrated').length,
-      total: supported.length + unresolved.length,
+      total: supported.length + unresolved.length + unclaimed,
       // Pending set rows inherit their workout's state and must not create an unresolved retry loop.
-      pending: [...Object.values(ledger.exercises), ...Object.values(ledger.routines)].filter(record => record.status === 'pending').length + Object.values(ledger.workouts).filter(record => record.status === 'pending' && record.snapshotMode === 'new').length,
-      pendingWorkouts: Object.values(ledger.workouts).filter(record => record.status !== 'migrated').length,
-      attention: unresolved.length + primaryRecords.filter(record => record.status === 'blocked' || record.status === 'failed' || record.status === 'unsupported').length,
+      pending: [...Object.values(ledger.exercises), ...Object.values(ledger.routines)].filter(record => record.status === 'pending').length + Object.values(ledger.workouts).filter(record => record.status === 'pending' && (record.snapshotMode === 'new' || record.automaticSync?.classification === 'B' || record.automaticSync?.classification === 'A')).length,
+      pendingWorkouts: Object.values(ledger.workouts).filter(record => record.status !== 'migrated').length + unclaimed,
+      attention: unresolved.length + unclaimed + (ledger.syncRetry && ledger.syncRetry.attempts >= 5 ? 1 : 0) + primaryRecords.filter(record => record.status === 'blocked' || record.status === 'failed' || record.status === 'unsupported' || ('automaticSync' in record && record.automaticSync?.classification === 'D')).length,
     };
   }
 
@@ -255,7 +398,7 @@ export class LocalToCloudMigrationService {
         const result = await firstValueFrom(this.exercises.create({
           clientId: mapping.clientId ?? (mapping.clientId = crypto.randomUUID()), category: null, equipment: null, targetMuscle: null, muscleGroup: null, secondaryMuscles: null,
           translations: [{ language: 'es', name: mapping.name.trim(), instructions: null }],
-        }));
+        }, ledger.accountId).pipe(timeout(45_000)));
         mapping.serverId = result.id; mapping.status = 'migrated'; delete mapping.error;
       } catch (error) { mapping.status = failureStatus(error); mapping.error = errorMessage(error); }
       await this.save(ledger);
@@ -278,7 +421,7 @@ export class LocalToCloudMigrationService {
         const response = await firstValueFrom(this.routinesApi.create({
           clientId: mapping.clientId, name: routine.name.trim(), description: null,
           exercises: routine.exercises.map((exercise, position) => ({ exerciseId: exerciseIds[position]!, position, sets: integerAtLeast(exercise.setsCount, 1), targetReps: ledger.defaults.targetReps, restSeconds: ledger.defaults.restSeconds, notes: null })),
-        }));
+        }, ledger.accountId).pipe(timeout(45_000)));
         mapping.serverId = response.id; mapping.status = 'migrated'; delete mapping.error;
       } catch (error) { mapping.status = failureStatus(error); mapping.error = errorMessage(error); }
       await this.save(ledger);
@@ -319,8 +462,8 @@ export class LocalToCloudMigrationService {
   }
 
   /** READ ONLY: no getLedger(), cache writes, state resets or HTTP mutations. */
-  async inspectRecovery(accountId: string, confirmedZone: string, localIds?: readonly string[]): Promise<RecoveryInspection[]> {
-    validateCalendarZone(confirmedZone);
+  async inspectRecovery(accountId: string, confirmedZone?: string, localIds?: readonly string[]): Promise<RecoveryInspection[]> {
+    if (confirmedZone) validateCalendarZone(confirmedZone);
     const [ledger, workouts, ownership] = await Promise.all([
       db.migrationLedgers.get(accountId), WorkoutHistoryRepository.getAll(), this.getOwnership(),
     ]);
@@ -338,7 +481,9 @@ export class LocalToCloudMigrationService {
       if (result.number !== page) throw new Error('Paginación remota incoherente; conciliación cancelada.');
       for (const value of result.content) {
         const relevant = !localIds || localIds.some(id => ledger?.workouts[id]?.clientId === value.clientId || ledger?.workouts[id]?.serverId === value.id);
-        remote.push(relevant ? await firstValueFrom(this.workoutsApi.get(value.id, accountId).pipe(timeout(30_000))) : value);
+        const detail = relevant ? await firstValueFrom(this.workoutsApi.get(value.id, accountId).pipe(timeout(30_000))) : value;
+        if (detail.id !== value.id || detail.clientId !== value.clientId) throw new Error('El detalle remoto cambió de identidad; repetir conciliación.');
+        remote.push(detail);
       }
       if (result.last) break;
       if (!result.content.length || ++page >= result.totalPages) throw new Error('Listado remoto incompleto; conciliación cancelada.');
@@ -350,11 +495,17 @@ export class LocalToCloudMigrationService {
       const mapping = ledger?.workouts[workout.id];
       const row: RecoveryInspection = { localId: workout.id, clientId: mapping?.clientId, remoteId: mapping?.serverId, classification: 'D', reason: 'Sin identidad persistida; revisión manual necesaria.' };
       if (!mapping || !ledger) return row;
-      if (mapping.snapshotPayload && mapping.snapshotPayload.calendarZone !== confirmedZone) return { ...row, reason: 'La propuesta guardada tiene otra zona histórica. Confirma esa zona o solicita revisión.' };
-      let payload;
-      try { payload = mapping.snapshotPayload ?? snapshotPayload(workout, mapping, ledger, confirmedZone); }
-      catch (error) { return { ...row, reason: errorMessage(error) }; }
       const candidates = remote.filter(value => value.id === mapping.serverId || value.clientId === mapping.clientId);
+      const verifiedZone = candidates.length === 1 && Date.parse(candidates[0].startedAtInstant ?? '') === Date.parse(workout.startedAt) && Date.parse(candidates[0].completedAtInstant ?? '') === Date.parse(workout.finishedAt) ? candidates[0].calendarZone : undefined;
+      const zone = confirmedZone ?? mapping.snapshotPayload?.calendarZone ?? workout.calendarZone ?? mapping.historicalZone ?? verifiedZone;
+      if (!zone) return { ...row, reason: 'Confirma la zona de estos entrenamientos históricos en Ajustes.' };
+      row.calendarZone = zone;
+      if (Object.values(ledger.workouts).filter(value => value.clientId === mapping.clientId || (mapping.serverId && value.serverId === mapping.serverId)).length > 1) return { ...row, reason: 'Identidad compartida por varios registros locales; requiere atención.' };
+      if (workout.calendarZone && workout.calendarZone !== zone) return { ...row, reason: 'La zona capturada y la propuesta no coinciden; requiere atención.' };
+      if (mapping.snapshotPayload && mapping.snapshotPayload.calendarZone !== zone) return { ...row, reason: 'La propuesta guardada tiene otra zona histórica. Confirma esa zona o solicita revisión.' };
+      let payload;
+      try { payload = mapping.snapshotPayload ?? snapshotPayload(workout, mapping, ledger, zone); }
+      catch (error) { return { ...row, reason: errorMessage(error) }; }
       if (candidates.length > 1) return { ...row, reason: 'Identidades remotas contradictorias.' };
       if (candidates.length === 1 && ((mapping.serverId && mapping.serverId !== candidates[0].id) ||
           candidates[0].clientId !== mapping.clientId)) return { ...row, reason: 'El remoteId y el clientId no confirman la misma identidad.' };
@@ -499,4 +650,4 @@ function localExerciseReferences(routines: Routine[]): { key: string; name: stri
   }))).values()];
 }
 
-export interface RecoveryInspection { localId: string; clientId?: string; remoteId?: string; classification: 'A' | 'B' | 'C' | 'D'; reason: string; }
+export interface RecoveryInspection { localId: string; clientId?: string; remoteId?: string; classification: 'A' | 'B' | 'C' | 'D'; reason: string; calendarZone?: string; }

@@ -11,6 +11,7 @@ import {
   UpdateExerciseRequest,
 } from './exercise-api.models';
 import { RETRY_SAFE_REQUEST } from '../services/resilient-http.interceptor';
+import { EXPECTED_ACCOUNT_ID } from '../auth/auth-http.context';
 
 @Injectable({ providedIn: 'root' })
 export class ExerciseApiService {
@@ -35,8 +36,8 @@ export class ExerciseApiService {
     return this.http.get<ExerciseResponse>(`${this.exercisesUrl}/${id}`);
   }
 
-  create(request: CreateExerciseRequest): Observable<ExerciseResponse> {
-    return this.http.post<ExerciseResponse>(this.exercisesUrl, request, { context: new HttpContext().set(RETRY_SAFE_REQUEST, true) });
+  create(request: CreateExerciseRequest, accountId?: string): Observable<ExerciseResponse> {
+    return this.http.post<ExerciseResponse>(this.exercisesUrl, request, { context: new HttpContext().set(RETRY_SAFE_REQUEST, true).set(EXPECTED_ACCOUNT_ID, accountId ?? null) });
   }
 
   update(id: string, request: UpdateExerciseRequest): Observable<ExerciseResponse> {

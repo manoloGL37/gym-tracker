@@ -30,9 +30,12 @@ describe('SettingsComponent account data status', () => {
     reconnecting.set(false);
     currentUser.set({ id: 'account-a', email: 'athlete@example.com' });
     migration = jasmine.createSpyObj<LocalToCloudMigrationService>('LocalToCloudMigrationService', [
-      'unresolvedReferences', 'searchExercises', 'chooseCatalogExercise', 'chooseCustomExercise',
+      'unresolvedReferences', 'searchExercises', 'chooseCatalogExercise', 'chooseCustomExercise', 'historicalZoneNeeds', 'getWorkoutMappings', 'getAccountLocalWorkouts', 'confirmHistoricalZone', 'resetAutomaticRetries',
     ]);
     migration.unresolvedReferences.and.resolveTo([]);
+    migration.historicalZoneNeeds.and.resolveTo([]);
+    migration.getWorkoutMappings.and.resolveTo({});
+    migration.getAccountLocalWorkouts.and.resolveTo([]);
     await TestBed.configureTestingModule({
       imports: [SettingsComponent],
       providers: [
@@ -61,7 +64,7 @@ describe('SettingsComponent account data status', () => {
     fixture.detectChanges();
     const text = fixture.nativeElement.textContent as string;
     expect(text).toContain('Tus datos');
-    expect(fixture.nativeElement.querySelector('a[href="/settings/sync-recovery"]')?.textContent).toContain('Revisar sincronización');
+    expect(fixture.nativeElement.querySelector('.backup-section a[href="/settings/sync-recovery"]')?.textContent).toContain('Copia y revisión manual opcionales');
     expect(text).toContain('Tus datos están sincronizados');
     expect(text).not.toContain('Guardar datos en tu cuenta');
     expect(text).not.toContain('Ahora no');
@@ -76,6 +79,18 @@ describe('SettingsComponent account data status', () => {
     const text = fixture.nativeElement.textContent as string;
     expect(text).toContain('1 elemento necesita tu atención');
     expect(text).toContain('Necesitamos identificar estos ejercicios');
+  });
+
+  it('confirms only the selected historical period without files or a recovery wizard', async () => {
+    const workouts = ['2025-01-01', '2025-06-01'].map((date, index) => ({ id: String(index), startedAt: date + 'T10:00:00Z' } as any));
+    migration.historicalZoneNeeds.and.resolveTo(workouts);
+    fixture.detectChanges(); await fixture.whenStable(); fixture.detectChanges();
+    fixture.componentInstance.historicalZone = 'Europe/Madrid';
+    fixture.componentInstance.historicalFrom = '2025-05-01';
+    await fixture.componentInstance.confirmZone();
+    expect(migration.confirmHistoricalZone).toHaveBeenCalledOnceWith('account-a', 'Europe/Madrid', ['1']);
+    expect(fixture.nativeElement.querySelector('.sync-section input[type="file"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.sync-section a[href="/settings/sync-recovery"]')).toBeNull();
   });
 
   it('renders real synchronization progress immediately', async () => {

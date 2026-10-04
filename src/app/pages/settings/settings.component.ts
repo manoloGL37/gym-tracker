@@ -9,6 +9,7 @@ import { LocalToCloudMigrationService } from '../../migration/local-to-cloud-mig
 import { AccountSyncService } from '../../migration/account-sync.service';
 import { ExerciseResponse } from '../../exercises/exercise-api.models';
 import { getExerciseName } from '../../exercises/exercise-domain';
+import { WorkoutHistory } from '../../data/workout-history.model';
 
 interface StorageInfo {
   usage: number | null;
@@ -70,6 +71,35 @@ export class SettingsComponent implements OnInit {
   migrationSearch = '';
   migrationCatalog = signal<ExerciseResponse[]>([]);
   private migrationLoadVersion = 0;
+  readonly historicalNeeds = signal<WorkoutHistory[]>([]);
+  readonly syncIssues = signal<{ id: string; label: string; reason: string }[]>([]);
+  historicalZone = '';
+  historicalFrom = '';
+  historicalTo = '';
+
+  historicalSelection(): WorkoutHistory[] {
+    return this.historicalNeeds().filter(value => (!this.historicalFrom || value.startedAt.slice(0, 10) >= this.historicalFrom) && (!this.historicalTo || value.startedAt.slice(0, 10) <= this.historicalTo));
+  }
+
+  async confirmZone(): Promise<void> {
+    const accountId = this.auth.currentUser()?.id;
+    if (!accountId || !this.historicalSelection().length) return;
+    this.migrationBusy.set(true); this.migrationError.set(null);
+    try {
+      await this.migration.confirmHistoricalZone(accountId, this.historicalZone.trim(), this.historicalSelection().map(value => value.id));
+      await this.loadMigration(); this.accountSync.retryNow();
+    } catch (error) { this.migrationError.set(error instanceof Error ? error.message : 'No se pudo confirmar la zona.'); }
+    finally { this.migrationBusy.set(false); }
+  }
+
+  async retrySync(): Promise<void> {
+    const accountId = this.auth.currentUser()?.id;
+    if (!accountId) return;
+    this.migrationBusy.set(true);
+    try { await this.migration.resetAutomaticRetries(accountId); this.accountSync.retryNow(); }
+    catch { this.migrationError.set('No se pudo preparar el reintento. Tus datos siguen guardados.'); }
+    finally { this.migrationBusy.set(false); }
+  }
 
   constructor() {
     effect(() => {
@@ -87,9 +117,21 @@ export class SettingsComponent implements OnInit {
   async loadMigration(): Promise<void> {
     const requestVersion = ++this.migrationLoadVersion;
     const accountId = this.auth.currentUser()?.id;
-    if (!accountId) { this.unresolvedExercises.set([]); return; }
-    const unresolved = await this.migration.unresolvedReferences(accountId);
-    if (requestVersion === this.migrationLoadVersion) this.unresolvedExercises.set(unresolved);
+    if (!accountId) { this.unresolvedExercises.set([]); this.historicalNeeds.set([]); this.syncIssues.set([]); return; }
+    try {
+      const [unresolved, historical, mappings, workouts] = await Promise.all([
+        this.migration.unresolvedReferences(accountId), this.migration.historicalZoneNeeds(accountId), this.migration.getWorkoutMappings(accountId), this.migration.getAccountLocalWorkouts(accountId),
+      ]);
+      if (requestVersion !== this.migrationLoadVersion || this.auth.currentUser()?.id !== accountId) return;
+      this.unresolvedExercises.set(unresolved); this.historicalNeeds.set(historical);
+      this.syncIssues.set(workouts.filter(value => {
+        const mapping = mappings[value.id];
+        return !mapping || mapping.automaticSync?.classification === 'C' || mapping.status === 'blocked' || mapping.status === 'failed';
+      }).map(value => ({ id: value.id, label: `${value.routineName} · ${value.startedAt.slice(0, 10)}`,
+        reason: mappings[value.id]?.automaticSync?.classification === 'C'
+          ? 'Este entrenamiento ya está en tu cuenta con datos diferentes. Conservamos el original; necesita revisión.'
+          : mappings[value.id]?.recoveryError ?? mappings[value.id]?.error ?? 'No podemos confirmar la identidad de este entrenamiento; no se enviará automáticamente.' })));
+    } catch { if (requestVersion === this.migrationLoadVersion) this.migrationError.set('No se pudo leer el estado local de sincronización.'); }
   }
 
   async openExerciseResolution(reference: { key: string; name: string }): Promise<void> {
@@ -132,7 +174,7 @@ export class SettingsComponent implements OnInit {
     switch (state.status) {
       case 'syncing': return state.total ? `Sincronizando · ${state.completed} de ${state.total}` : 'Sincronizando';
       case 'retrying': return 'Reintentando sincronización...';
-      case 'waiting': return 'Esperando conexión';
+      case 'waiting': return 'Esperando conexión o confirmación del servidor';
       case 'attention': return state.attention === 1 ? '1 elemento necesita tu atención' : `${state.attention} elementos necesitan tu atención`;
       case 'synced': return 'Tus datos están sincronizados';
       default: return 'Preparando sincronización';

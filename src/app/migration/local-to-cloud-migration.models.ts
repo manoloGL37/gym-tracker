@@ -34,11 +34,14 @@ export interface ResourceMapping {
   claimedAt?: string;
   error?: string;
   localOnlyReason?: string;
-  /** Immutable proposal persisted before POST. Legacy proposals never auto replay. */
+  /** Immutable proposal persisted before POST. Reconcile remote state before replay. */
   snapshotPayload?: CreateMobileWorkoutRequest;
   snapshotMode?: 'new' | 'recovery';
   /** Recovery failures do not erase the original migration error/reason. */
   recoveryError?: string;
+  /** Historical confirmation belongs to this identity; original history stays untouched. */
+  historicalZone?: string;
+  automaticSync?: { classification?: 'A' | 'B' | 'C' | 'D'; confirmedAt?: string; attempts: number; nextAttemptAt?: number; originalStatus: MigrationRecordStatus; originalError?: string };
 }
 
 /** Stored under the authenticated `/me` UUID, never under an email or device identifier. */
@@ -54,6 +57,8 @@ export interface MigrationLedger {
   routines: Record<string, ResourceMapping>;
   workouts: Record<string, ResourceMapping>;
   sets: Record<string, ResourceMapping>;
+  /** Durable read-failure budget, including cold starts and application restarts. */
+  syncRetry?: { attempts: number; nextAttemptAt: number };
 }
 
 export interface MigrationPreview {

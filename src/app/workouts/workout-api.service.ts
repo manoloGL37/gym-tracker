@@ -22,7 +22,8 @@ export class WorkoutApiService {
 
   get(id: WorkoutId, accountId?: string): Observable<WorkoutResponse> { return this.http.get<WorkoutResponse>(`${this.workoutsUrl}/${id}`, { context: new HttpContext().set(EXPECTED_ACCOUNT_ID, accountId ?? null) }); }
   createMobile(request: CreateMobileWorkoutRequest, accountId?: string): Observable<WorkoutResponse> {
-    return this.http.post<WorkoutResponse>(`${this.workoutsUrl}/mobile`, request, { context: new HttpContext().set(RETRY_SAFE_REQUEST, true).set(EXPECTED_ACCOUNT_ID, accountId ?? null) });
+    // Lost responses must be reconciled before another POST; no interceptor-level replay.
+    return this.http.post<WorkoutResponse>(`${this.workoutsUrl}/mobile`, request, { context: new HttpContext().set(EXPECTED_ACCOUNT_ID, accountId ?? null) });
   }
   create(request: CreateWorkoutRequest): Observable<WorkoutResponse> { return this.http.post<WorkoutResponse>(this.workoutsUrl, request, { context: new HttpContext().set(RETRY_SAFE_REQUEST, true) }); }
   update(id: WorkoutId, request: UpdateWorkoutRequest): Observable<WorkoutResponse> { return this.http.patch<WorkoutResponse>(`${this.workoutsUrl}/${id}`, request); }

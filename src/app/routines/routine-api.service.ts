@@ -11,6 +11,7 @@ import {
   UpdateRoutineRequest,
 } from './routine-api.models';
 import { RETRY_SAFE_REQUEST } from '../services/resilient-http.interceptor';
+import { EXPECTED_ACCOUNT_ID } from '../auth/auth-http.context';
 
 @Injectable({ providedIn: 'root' })
 export class RoutineApiService {
@@ -29,8 +30,8 @@ export class RoutineApiService {
     return this.http.get<RoutineResponse>(`${this.routinesUrl}/${id}`);
   }
 
-  create(request: CreateRoutineRequest): Observable<RoutineResponse> {
-    return this.http.post<RoutineResponse>(this.routinesUrl, request, { context: new HttpContext().set(RETRY_SAFE_REQUEST, true) });
+  create(request: CreateRoutineRequest, accountId?: string): Observable<RoutineResponse> {
+    return this.http.post<RoutineResponse>(this.routinesUrl, request, { context: new HttpContext().set(RETRY_SAFE_REQUEST, true).set(EXPECTED_ACCOUNT_ID, accountId ?? null) });
   }
 
   update(id: RoutineId, request: UpdateRoutineRequest): Observable<RoutineResponse> {

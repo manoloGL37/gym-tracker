@@ -1,5 +1,7 @@
 # Recuperación de sincronización desde el PWA
 
+> Decisión vigente: [PWA_SYNC_AUTOMATIC.md](PWA_SYNC_AUTOMATIC.md). El flujo habitual ahora concilia y sincroniza automáticamente desde la cuenta autenticada. Este documento conserva la herramienta manual avanzada opcional y su evidencia anterior; sus requisitos de archivos/selección/replay no se aplican al flujo automático.
+
 03/10/2026. Extensión local de `ac67cb2`, en la rama `fix/pwa-historical-snapshot-sync`. Sin despliegue, push, merge, importación ni recuperación real. Android y backend sin cambios.
 
 ## Flujo del usuario en Xiaomi

@@ -22,6 +22,7 @@ export class AccountSyncService implements OnDestroy {
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
   private running: Promise<void> | null = null;
   private hasPendingWork = false;
+  private workArrivedDuringSync = false;
   private recoveryPaused = 0;
   private readonly onlineListener = () => this.resumePendingSync();
   private readonly visibilityListener = () => {
@@ -63,6 +64,7 @@ export class AccountSyncService implements OnDestroy {
   retryNow(): void {
     if (this.recoveryPaused || !this.accountId || this.running) return;
     this.clearRetry();
+    this.retryAttempt = 0;
     void this.run();
   }
 
@@ -70,6 +72,7 @@ export class AccountSyncService implements OnDestroy {
   notifyPendingWork(): void {
     if (!this.accountId) return;
     this.hasPendingWork = true;
+    if (this.running) this.workArrivedDuringSync = true;
     this.retryNow();
   }
 
@@ -97,6 +100,7 @@ export class AccountSyncService implements OnDestroy {
     this.running = null;
     this.retryAttempt = 0;
     this.hasPendingWork = false;
+    this.workArrivedDuringSync = false;
     this.clearRetry();
     this.status.set('idle');
     this.completed.set(0);
@@ -117,7 +121,12 @@ export class AccountSyncService implements OnDestroy {
     const runId = ++this.runId;
     this.status.set(this.retryAttempt ? 'retrying' : 'syncing');
     const task = this.synchronize(accountId, runId).finally(() => {
-      if (this.running === task) this.running = null;
+      if (this.running !== task) return;
+      this.running = null;
+      if (this.workArrivedDuringSync) {
+        this.workArrivedDuringSync = false;
+        this.retryNow();
+      }
     });
     this.running = task;
     return task;
@@ -128,9 +137,10 @@ export class AccountSyncService implements OnDestroy {
     try {
       // Show the ledger's real queue without delaying its POSTs.
       void this.refreshProgress(accountId, runId);
-      await this.migration.start(accountId);
-      const progress = await this.refreshProgress(accountId, runId);
-      if (!progress || runId !== this.runId || accountId !== this.accountId) return;
+      await this.migration.synchronizeAccount(accountId);
+      const progress = await this.refreshProgress(accountId, runId, true);
+      if (runId !== this.runId || accountId !== this.accountId) return;
+      if (!progress) throw new Error('No se pudo confirmar el estado local de sincronización.');
       this.retryAttempt = progress.pending ? this.retryAttempt + 1 : 0;
       this.hasPendingWork = progress.pending > 0;
       this.status.set(progress.attention ? 'attention' : progress.pending ? 'waiting' : 'synced');
@@ -139,16 +149,18 @@ export class AccountSyncService implements OnDestroy {
       if (runId !== this.runId || accountId !== this.accountId) return;
       this.retryAttempt++;
       this.hasPendingWork = true;
-      this.status.set('waiting');
+      const progress = await this.refreshProgress(accountId, runId, true);
+      if (runId !== this.runId || accountId !== this.accountId) return;
+      this.status.set(progress?.attention && this.retryAttempt >= 5 ? 'attention' : 'waiting');
       this.scheduleRetry(runId);
     }
   }
 
-  private async refreshProgress(accountId: string, runId: number) {
+  private async refreshProgress(accountId: string, runId: number, final = false) {
     const progressReadId = ++this.progressReadId;
     try {
       const progress = await this.migration.getProgress(accountId);
-      if (progressReadId !== this.progressReadId || runId !== this.runId || accountId !== this.accountId) return null;
+      if ((!final && progressReadId !== this.progressReadId) || runId !== this.runId || accountId !== this.accountId) return null;
       this.applyProgress(progress);
       return progress;
     } catch {
@@ -170,17 +182,12 @@ export class AccountSyncService implements OnDestroy {
       return;
     }
 
-    this.hasPendingWork = false;
-    this.retryAttempt = 0;
-    this.clearRetry();
-    // Completion is a queue state: all retryable work is gone and no resource needs intervention.
-    // It deliberately does not infer success from completed === total.
-    this.status.set(progress.attention > 0 ? 'attention' : 'synced');
+    // Ledger reads update counters only. Success is set after the remote reconciliation resolves.
   }
 
   private scheduleRetry(runId: number): void {
     this.clearRetry();
-    if (this.recoveryPaused) return;
+    if (this.recoveryPaused || this.retryAttempt >= 5) return;
     // ponytail: bounded exponential backoff capped at one minute; online events can retry sooner.
     const delay = Math.min(60_000, 5_000 * 3 ** Math.min(this.retryAttempt - 1, 3));
     this.retryTimer = setTimeout(() => {

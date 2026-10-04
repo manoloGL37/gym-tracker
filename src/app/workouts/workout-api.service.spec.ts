@@ -14,13 +14,13 @@ describe('WorkoutApiService', () => {
   beforeEach(() => { TestBed.configureTestingModule({ providers: [provideHttpClient(), provideHttpClientTesting()] }); service = TestBed.inject(WorkoutApiService); requests = TestBed.inject(HttpTestingController); });
   afterEach(() => requests.verify());
 
-  it('posts the exact V15 snapshot atomically with retry-safe identity', () => {
+  it('posts the exact V15 snapshot without replaying a lost response in the interceptor', () => {
     const payload = { clientId: '00000000-0000-4000-8000-000000000001', routineId: null, startedAt: '2026-09-10T12:30:00.123Z', completedAt: '2026-09-10T12:40:00.456Z', calendarZone: 'Europe/Madrid', notes: null, nameSnapshot: 'Synthetic', exercises: [{ clientId: '00000000-0000-4000-8000-000000000002', exerciseId: null, exerciseNameSnapshot: 'Historical press', position: 0, notes: 'Synthetic observation', sets: [{ clientId: '00000000-0000-4000-8000-000000000003', setNumber: 1, weight: 12.75, reps: 8, rpe: null }] }] };
     service.createMobile(payload).subscribe();
     const call = requests.expectOne('https://gym-tracker-api-s70k.onrender.com/api/workouts/mobile');
     expect(call.request.method).toBe('POST');
     expect(call.request.body).toEqual(payload);
-    expect(call.request.context.get(RETRY_SAFE_REQUEST)).toBeTrue();
+    expect(call.request.context.get(RETRY_SAFE_REQUEST)).toBeFalse();
     call.flush(workout);
   });
 

@@ -99,8 +99,8 @@ describe('LocalToCloudMigrationService', () => {
     const ledger = await service.getLedger('account-a');
     const mapping = ledger.exercises[routineExerciseKey('routine-1', exerciseId)];
     expect(mapping.status).toBe('migrated');
-    expect(exerciseApi.create).toHaveBeenCalledWith(jasmine.objectContaining({ clientId: mapping.clientId, translations: [{ language: 'es', name: 'Mi press', instructions: null }] }));
-    expect(routineApi.create).toHaveBeenCalledWith(jasmine.objectContaining({ exercises: [jasmine.objectContaining({ exerciseId: 'server-exercise' })] }));
+    expect(exerciseApi.create).toHaveBeenCalledWith(jasmine.objectContaining({ clientId: mapping.clientId, translations: [{ language: 'es', name: 'Mi press', instructions: null }] }), 'account-a');
+    expect(routineApi.create).toHaveBeenCalledWith(jasmine.objectContaining({ exercises: [jasmine.objectContaining({ exerciseId: 'server-exercise' })] }), 'account-a');
   });
 
   it('keeps the custom exercise clientId across a temporary failure and retry', async () => {
@@ -456,6 +456,279 @@ describe('LocalToCloudMigrationService', () => {
     expect(workoutApi.createSet).not.toHaveBeenCalled();
     const finalServerCount = 1 + workoutApi.createMobile.calls.count();
     expect(finalServerCount + (await service.getPendingLocalWorkouts('account-a')).length).toBe(3);
+  });
+});
+
+describe('Automatic historical account synchronization', () => {
+  let service: LocalToCloudMigrationService;
+  let api: jasmine.SpyObj<WorkoutApiService>;
+  let auth: jasmine.SpyObj<AuthApiService>;
+  let remote: any[];
+
+  beforeEach(async () => {
+    await Promise.all([db.routines.clear(), db.workoutHistory.clear(), db.migrationLedgers.clear()]);
+    remote = [];
+    api = jasmine.createSpyObj('WorkoutApiService', ['list', 'get', 'createMobile']);
+    auth = jasmine.createSpyObj('AuthApiService', ['getCurrentUser']);
+    auth.getCurrentUser.and.returnValue(of({ id: 'account-a' } as any));
+    api.list.and.callFake(() => of({ content: remote, number: 0, totalPages: 1, totalElements: remote.length, last: true } as any));
+    api.get.and.callFake(id => of(remote.find(value => value.id === id)));
+    api.createMobile.and.callFake(payload => {
+      const response = remote.find(value => value.clientId === payload.clientId) ?? mobileResponse(payload);
+      if (!remote.includes(response)) remote.push(response);
+      return of(response);
+    });
+    TestBed.configureTestingModule({ providers: [LocalToCloudMigrationService,
+      { provide: AuthApiService, useValue: auth }, { provide: WorkoutApiService, useValue: api },
+    ] });
+    service = TestBed.inject(LocalToCloudMigrationService);
+  });
+
+  afterEach(async () => {
+    await Promise.all([db.routines.clear(), db.workoutHistory.clear(), db.migrationLedgers.clear()]);
+    TestBed.resetTestingModule();
+  });
+
+  async function historical(id: string, zoned = true) {
+    const workout = localWorkout(id, 'deleted-routine', 'deleted-exercise');
+    if (!zoned) delete workout.calendarZone;
+    await db.workoutHistory.put(workout);
+    const ledger = await service.getLedger('account-a');
+    ledger.workouts[id] = { clientId: crypto.randomUUID(), status: 'unsupported', error: 'Old rejection', localOnlyReason: 'Original reason' };
+    await db.migrationLedgers.put(ledger);
+    return workout;
+  }
+
+  it('automatically recovers unsupported, incomplete and skipped exercise snapshots without current routines', async () => {
+    const workout = await historical('historical');
+    workout.exercises[0].observation = 'Historical note';
+    workout.exercises[0].sets.push({ setIndex: 1, weight: 25, reps: null });
+    workout.exercises.push({ exerciseId: 'skipped', name: 'Skipped exercise', sets: [{ setIndex: 0, weight: null, reps: null }] });
+    await db.workoutHistory.put(workout);
+    api.createMobile.and.callFake(payload => from((async () => {
+      const saved = (await service.getLedger('account-a')).workouts[workout.id];
+      expect(saved.snapshotPayload).toEqual(payload);
+      expect(saved.automaticSync?.attempts).toBe(1);
+      remote.push(mobileResponse(payload)); return remote[0];
+    })()));
+    await service.synchronizeAccount('account-a');
+    const mapping = (await service.getLedger('account-a')).workouts[workout.id];
+    expect(mapping.status).toBe('migrated');
+    expect(mapping.automaticSync?.originalStatus).toBe('unsupported');
+    expect(mapping.automaticSync?.originalError).toBe('Old rejection');
+    expect(mapping.snapshotPayload!.exercises[0].sets.length).toBe(1);
+    expect(mapping.snapshotPayload!.exercises[1].sets).toEqual([]);
+    expect(mapping.snapshotPayload!.startedAt).toBe(workout.startedAt);
+    expect(mapping.snapshotPayload!.exercises[0].notes).toBe('Historical note');
+    expect(await db.workoutHistory.get(workout.id)).toEqual(workout);
+    await service.synchronizeAccount('account-a');
+    expect(api.createMobile).toHaveBeenCalledTimes(1);
+  });
+
+  it('confirms already synchronized records by remote detail without POST', async () => {
+    const workout = await historical('confirmed');
+    const ledger = await service.getLedger('account-a');
+    const { snapshotPayload } = await import('./workout-snapshot');
+    remote.push(mobileResponse(snapshotPayload(workout, ledger.workouts[workout.id], ledger, workout.calendarZone!)));
+    await service.synchronizeAccount('account-a');
+    expect(api.createMobile).not.toHaveBeenCalled();
+    expect((await service.getLedger('account-a')).workouts[workout.id].automaticSync?.confirmedAt).toBeDefined();
+  });
+
+  it('holds a partial remote and continues uploading independent absent records', async () => {
+    const partial = await historical('partial');
+    const absent = await historical('absent');
+    absent.startedAt = '2026-09-09T10:00:00.000Z'; absent.finishedAt = '2026-09-09T11:00:00.000Z';
+    await db.workoutHistory.put(absent);
+    const ledger = await service.getLedger('account-a');
+    const { snapshotPayload } = await import('./workout-snapshot');
+    remote.push({ ...mobileResponse(snapshotPayload(partial, ledger.workouts[partial.id], ledger, partial.calendarZone!)), exercises: [] });
+    await service.synchronizeAccount('account-a');
+    const final = await service.getLedger('account-a');
+    expect(final.workouts['partial'].automaticSync?.classification).toBe('C');
+    expect(final.workouts['partial'].status).toBe('blocked');
+    expect(final.workouts['absent'].status).toBe('migrated');
+    expect(api.createMobile).toHaveBeenCalledTimes(1);
+    expect(remote.length).toBe(2);
+  });
+
+  it('reconciles a committed POST with lost response after restart without another POST', async () => {
+    await historical('lost');
+    api.createMobile.and.callFake(payload => {
+      remote.push(mobileResponse(payload));
+      return throwError(() => new HttpErrorResponse({ status: 0 }));
+    });
+    await service.synchronizeAccount('account-a');
+    expect((await service.getLedger('account-a')).workouts['lost'].status).toBe('pending');
+    // A new injector recreates the service; only IndexedDB carries the proposal and attempts.
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({ providers: [LocalToCloudMigrationService,
+      { provide: AuthApiService, useValue: auth }, { provide: WorkoutApiService, useValue: api },
+    ] });
+    service = TestBed.inject(LocalToCloudMigrationService);
+    await service.synchronizeAccount('account-a');
+    expect(api.createMobile).toHaveBeenCalledTimes(1);
+    expect((await service.getLedger('account-a')).workouts['lost'].status).toBe('migrated');
+  });
+
+  it('persists bounded backoff across passes, preserving exact body and originals', async () => {
+    const workout = await historical('backoff');
+    api.createMobile.and.returnValue(throwError(() => new HttpErrorResponse({ status: 503 })));
+    await service.synchronizeAccount('account-a');
+    const payload = (await service.getLedger('account-a')).workouts['backoff'].snapshotPayload;
+    await service.synchronizeAccount('account-a');
+    expect(api.createMobile).toHaveBeenCalledTimes(1);
+    for (let attempt = 2; attempt <= 5; attempt++) {
+      const ledger = await service.getLedger('account-a');
+      ledger.workouts['backoff'].automaticSync!.nextAttemptAt = 0;
+      await db.migrationLedgers.put(ledger);
+      await service.synchronizeAccount('account-a');
+    }
+    await service.synchronizeAccount('account-a');
+    expect(api.createMobile).toHaveBeenCalledTimes(5);
+    expect(api.createMobile.calls.allArgs().every(args => JSON.stringify(args[0]) === JSON.stringify(payload))).toBeTrue();
+    expect((await service.getLedger('account-a')).workouts['backoff'].status).toBe('failed');
+    expect(await db.workoutHistory.get(workout.id)).toEqual(workout);
+  });
+
+  it('bounds failed remote reads durably and never infers absence from offline reads', async () => {
+    await historical('offline');
+    api.list.and.returnValue(throwError(() => new HttpErrorResponse({ status: 503 })));
+    await expectAsync(service.synchronizeAccount('account-a')).toBeRejected();
+    await expectAsync(service.synchronizeAccount('account-a')).toBeRejected();
+    expect(api.list).toHaveBeenCalledTimes(1);
+    for (let attempt = 2; attempt <= 5; attempt++) {
+      const ledger = await service.getLedger('account-a'); ledger.syncRetry!.nextAttemptAt = 0;
+      await db.migrationLedgers.put(ledger);
+      await expectAsync(service.synchronizeAccount('account-a')).toBeRejected();
+    }
+    await expectAsync(service.synchronizeAccount('account-a')).toBeRejected();
+    expect(api.list).toHaveBeenCalledTimes(5);
+    expect(api.createMobile).not.toHaveBeenCalled();
+    api.list.and.returnValue(of({ content: [], number: 0, totalPages: 1, totalElements: 0, last: true } as any));
+    await service.resetAutomaticRetries('account-a');
+    await service.synchronizeAccount('account-a');
+    expect((await service.getLedger('account-a')).workouts['offline'].status).toBe('migrated');
+  });
+
+  it('serializes concurrent account passes through native Web Locks', async () => {
+    await historical('concurrent');
+    await Promise.all([service.synchronizeAccount('account-a'), service.synchronizeAccount('account-a')]);
+    expect(api.createMobile).toHaveBeenCalledTimes(1);
+    expect(remote.length).toBe(1);
+  });
+
+  it('never confirms a response without a server identity even when all facts match', async () => {
+    await historical('invalid-response');
+    api.createMobile.and.callFake(payload => of({ ...mobileResponse(payload), id: undefined }));
+    await service.synchronizeAccount('account-a');
+    const mapping = (await service.getLedger('account-a')).workouts['invalid-response'];
+    expect(mapping.status).toBe('failed');
+    expect(mapping.automaticSync?.confirmedAt).toBeUndefined();
+    expect(mapping.serverId).toBeUndefined();
+    expect((await service.getProgress('account-a')).attention).toBeGreaterThan(0);
+  });
+
+  it('keeps offline work local and resumes after connectivity returns', async () => {
+    const workout = await historical('offline-online');
+    const online = spyOnProperty(navigator, 'onLine', 'get').and.returnValue(false);
+    await expectAsync(service.synchronizeAccount('account-a')).toBeRejected();
+    expect(api.list).not.toHaveBeenCalled(); expect(api.createMobile).not.toHaveBeenCalled();
+    expect(await db.workoutHistory.get(workout.id)).toEqual(workout);
+    online.and.returnValue(true);
+    await service.synchronizeAccount('account-a');
+    expect((await service.getLedger('account-a')).workouts[workout.id].status).toBe('migrated');
+  });
+
+  it('journals POST timeouts and consults remote state before an identical retry', async () => {
+    await historical('timeout');
+    api.createMobile.and.returnValue(throwError(() => Object.assign(new Error('Timeout'), { name: 'TimeoutError' })));
+    await service.synchronizeAccount('account-a');
+    const ledger = await service.getLedger('account-a');
+    const payload = ledger.workouts['timeout'].snapshotPayload;
+    expect(ledger.workouts['timeout'].status).toBe('pending');
+    ledger.workouts['timeout'].automaticSync!.nextAttemptAt = 0;
+    await db.migrationLedgers.put(ledger);
+    api.list.calls.reset();
+    api.createMobile.and.callFake(request => {
+      expect(api.list).toHaveBeenCalled();
+      expect(request).toEqual(payload!);
+      return of(mobileResponse(request));
+    });
+    await service.synchronizeAccount('account-a');
+    expect(ledger.workouts['timeout'].snapshotPayload).toEqual(payload);
+    expect((await service.getLedger('account-a')).workouts['timeout'].status).toBe('migrated');
+  });
+
+  it('detects duplicated remote pages and refuses to upload any records', async () => {
+    const workout = await historical('remote-duplicate');
+    const ledger = await service.getLedger('account-a');
+    const { snapshotPayload } = await import('./workout-snapshot');
+    const value = mobileResponse(snapshotPayload(workout, ledger.workouts[workout.id], ledger, workout.calendarZone!));
+    remote.push(value, value);
+    await expectAsync(service.synchronizeAccount('account-a')).toBeRejected();
+    expect(api.createMobile).not.toHaveBeenCalled();
+    expect(await db.workoutHistory.get(workout.id)).toEqual(workout);
+  });
+
+  it('cancels when the authenticated account changes before transmission', async () => {
+    await historical('account-change');
+    auth.getCurrentUser.and.returnValues(of({ id: 'account-a' } as any), of({ id: 'account-b' } as any));
+    await expectAsync(service.synchronizeAccount('account-a')).toBeRejected();
+    expect(api.createMobile).not.toHaveBeenCalled();
+    expect(await service.getAccountLocalWorkouts('account-b')).toEqual([]);
+  });
+
+  it('holds unknown zones while the rest advances, then uses one explicit zone confirmation', async () => {
+    const unknown = await historical('unknown', false);
+    const known = await historical('known');
+    known.startedAt = '2026-09-10T10:00:00.000Z'; known.finishedAt = '2026-09-10T11:00:00.000Z';
+    await db.workoutHistory.put(known);
+    await service.synchronizeAccount('account-a');
+    expect((await service.getLedger('account-a')).workouts['unknown'].automaticSync?.classification).toBe('D');
+    expect((await service.getLedger('account-a')).workouts['known'].status).toBe('migrated');
+    await service.confirmHistoricalZone('account-a', 'Europe/Madrid', ['unknown']);
+    await service.synchronizeAccount('account-a');
+    expect((await service.getLedger('account-a')).workouts['unknown'].status).toBe('migrated');
+    expect(await db.workoutHistory.get(unknown.id)).toEqual(unknown);
+  });
+
+  it('uses remote zone metadata only when identity and exact original instants agree', async () => {
+    const unknown = await historical('remote-zone', false);
+    const ledger = await service.getLedger('account-a');
+    const { snapshotPayload } = await import('./workout-snapshot');
+    remote.push(mobileResponse(snapshotPayload(unknown, ledger.workouts[unknown.id], ledger, 'Europe/Madrid')));
+    await service.synchronizeAccount('account-a');
+    expect((await service.getLedger('account-a')).workouts[unknown.id].status).toBe('migrated');
+    expect(api.createMobile).not.toHaveBeenCalled();
+  });
+
+  it('retains missing legacy identity and duplicate local identities as ambiguous', async () => {
+    const unmapped = localWorkout('unmapped', 'missing', 'missing'); delete unmapped.calendarZone;
+    await db.workoutHistory.put(unmapped);
+    await historical('duplicate-a'); await historical('duplicate-b');
+    const ledger = await service.getLedger('account-a');
+    ledger.workouts['duplicate-b'].clientId = ledger.workouts['duplicate-a'].clientId;
+    await db.migrationLedgers.put(ledger);
+    await service.synchronizeAccount('account-a');
+    expect(api.createMobile).not.toHaveBeenCalled();
+    expect((await service.getLedger('account-a')).workouts['duplicate-a'].automaticSync?.classification).toBe('D');
+    expect((await service.getProgress('account-a')).attention).toBeGreaterThan(0);
+    expect(await db.workoutHistory.get('unmapped')).toEqual(unmapped);
+  });
+
+  it('refuses changed local history after a durable proposal without sending again', async () => {
+    const workout = await historical('changed');
+    api.createMobile.and.returnValue(throwError(() => new HttpErrorResponse({ status: 503 })));
+    await service.synchronizeAccount('account-a');
+    workout.exercises[0].sets[0].weight = 99;
+    await db.workoutHistory.put(workout);
+    const ledger = await service.getLedger('account-a'); ledger.workouts[workout.id].automaticSync!.nextAttemptAt = 0;
+    await db.migrationLedgers.put(ledger);
+    await service.synchronizeAccount('account-a');
+    expect(api.createMobile).toHaveBeenCalledTimes(1);
+    expect((await service.getLedger('account-a')).workouts[workout.id].status).toBe('failed');
+    expect(await db.workoutHistory.get(workout.id)).toEqual(workout);
   });
 });
 
