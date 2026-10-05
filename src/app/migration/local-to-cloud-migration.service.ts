@@ -1,5 +1,6 @@
 import { Injectable, Injector, inject, signal } from '@angular/core';
 import { HttpErrorResponse } from '@angular/common/http';
+import { SyncDiagnosticsService } from './sync-diagnostics.service';
 import { firstValueFrom, timeout } from 'rxjs';
 import { ActiveTrainingRepository, db, Routine, RoutinesRepository, WorkoutHistoryRepository } from '../data/active-training.repository';
 import { WorkoutHistory } from '../data/workout-history.model';
@@ -22,6 +23,7 @@ export class LocalToCloudMigrationService {
   // Lazily resolve HTTP clients so read-only duplicate suppression stays usable in guest
   // screens and isolated tests without constructing unrelated API services.
   private readonly injector = inject(Injector);
+  private readonly diagnostics = inject(SyncDiagnosticsService);
   private get exercises(): ExerciseApiService { return this.injector.get(ExerciseApiService); }
   private get routinesApi(): RoutineApiService { return this.injector.get(RoutineApiService); }
   private get workoutsApi(): WorkoutApiService { return this.injector.get(WorkoutApiService); }
@@ -161,7 +163,11 @@ export class LocalToCloudMigrationService {
     return navigator.locks.request('gym-tracker-ledger', async () => {
       if (!navigator.onLine) throw new Error('Sin conexión; los datos siguen guardados.');
       const ledger = await this.getLedger(accountId);
-      if (ledger.syncRetry && (ledger.syncRetry.attempts >= 5 || ledger.syncRetry.nextAttemptAt > Date.now())) throw new Error('Esperando el siguiente reintento seguro.');
+      if (ledger.syncRetry && (ledger.syncRetry.attempts >= 5 || ledger.syncRetry.nextAttemptAt > Date.now())) {
+        this.diagnostics.record({ category: 'migration', operation: 'retry', result: ledger.syncRetry.attempts >= 5 ? 'attention' : 'pending', reason: ledger.syncRetry.attempts >= 5 ? 'retry-budget' : 'backoff', attempt: ledger.syncRetry.attempts });
+        this.diagnostics.retryState.set(ledger.syncRetry.attempts >= 5 ? 'Presupuesto de consultas agotado' : 'Esperando el plazo de reintento');
+        throw new Error('Esperando el siguiente reintento seguro.');
+      }
       try {
         await this.verifyAccount(accountId);
         await this.ensureClientIds(ledger, await this.getOwnership());
@@ -183,7 +189,9 @@ export class LocalToCloudMigrationService {
   }
 
   private async verifyAccount(accountId: string): Promise<void> {
+    const started = this.diagnostics.begin('migration', 'verify');
     if ((await firstValueFrom(this.injector.get(AuthApiService).getCurrentUser().pipe(timeout(30_000)))).id !== accountId) throw new Error('La cuenta cambió; sincronización cancelada.');
+    this.diagnostics.record({ category: 'migration', operation: 'verify', result: 'success', elapsedMs: performance.now() - started });
   }
 
   async historicalZoneNeeds(accountId: string): Promise<WorkoutHistory[]> {
@@ -236,21 +244,28 @@ export class LocalToCloudMigrationService {
     await this.save(ledger);
     // ponytail: one complete paginated read per zone; add a server snapshot cursor if history grows large.
     for (const [groupZone, ids] of zones) {
+      const reconcileStarted = this.diagnostics.begin('workout', 'reconcile');
       const inspections = await this.inspectRecovery(ledger.accountId, groupZone || undefined, ids);
+      this.diagnostics.record({ category: 'workout', operation: 'reconcile', result: 'success', elapsedMs: performance.now() - reconcileStarted });
       for (const inspection of inspections) {
         const zone = inspection.calendarZone ?? groupZone;
         const mapping = ledger.workouts[inspection.localId];
         const journal = mapping.automaticSync!;
         journal.classification = inspection.classification;
         if (inspection.classification === 'C' || inspection.classification === 'D') {
+          this.diagnostics.record({ category: 'workout', operation: 'reconcile', result: 'attention', reason: inspection.classification === 'C' ? 'snapshot-different' : 'ambiguous' });
           mapping.status = 'blocked'; mapping.recoveryError = inspection.reason;
           await this.save(ledger); continue;
         }
         if (inspection.classification === 'B' && (journal.attempts >= 5 || (journal.nextAttemptAt ?? 0) > Date.now())) {
+          this.diagnostics.record({ category: 'workout', operation: 'retry', result: journal.attempts >= 5 ? 'attention' : 'pending', reason: journal.attempts >= 5 ? 'retry-budget' : 'backoff', attempt: journal.attempts });
+          this.diagnostics.retryState.set(journal.attempts >= 5 ? 'Presupuesto de envíos agotado' : 'Esperando el plazo de reintento');
           mapping.status = journal.attempts >= 5 ? 'failed' : 'pending';
           await this.save(ledger); continue;
         }
         await this.verifyAccount(ledger.accountId);
+        const operation = inspection.classification === 'A' ? 'verify' : 'create';
+        const started = this.diagnostics.begin('workout', operation, journal.attempts + 1);
         try {
           const workout = await db.workoutHistory.get(inspection.localId);
           if (!workout) throw new Error('El historial local ya no existe; no enviar.');
@@ -267,6 +282,7 @@ export class LocalToCloudMigrationService {
           const current = await db.workoutHistory.get(inspection.localId);
           if (typeof response.id !== 'string' || !response.id.trim() || response.clientId !== mapping.clientId || (mapping.serverId && mapping.serverId !== response.id) || !sameSnapshot(mapping.snapshotPayload, response) || !current || !sameSnapshot(snapshotPayload(current, mapping, ledger, zone), response)) throw new Error('Identidad o snapshot diferente; no reenviar ni sobrescribir.');
           mapping.serverId = response.id; mapping.status = 'migrated';
+          this.diagnostics.record({ category: 'workout', operation, result: 'success', attempt: journal.attempts, elapsedMs: performance.now() - started });
           journal.classification = 'A'; journal.confirmedAt = new Date().toISOString();
           delete journal.nextAttemptAt; delete mapping.recoveryError;
           for (const remoteSet of response.exercises.flatMap(value => value.sets)) {
@@ -277,6 +293,7 @@ export class LocalToCloudMigrationService {
           mapping.status = failureStatus(error);
           if (journal.attempts >= 5) mapping.status = 'failed';
           mapping.recoveryError = errorMessage(error);
+          this.diagnostics.failure('workout', operation, error, mapping.status === 'pending' ? 'pending' : 'attention', journal.attempts, started);
         }
         await this.save(ledger);
       }
@@ -394,13 +411,17 @@ export class LocalToCloudMigrationService {
   private async migrateResolvedExercises(ledger: MigrationLedger): Promise<void> {
     for (const mapping of Object.values(ledger.exercises)) {
       if (mapping.choice !== 'custom' || mapping.status !== 'pending') continue;
+      const started = this.diagnostics.begin('exercise', 'create');
       try {
         const result = await firstValueFrom(this.exercises.create({
           clientId: mapping.clientId ?? (mapping.clientId = crypto.randomUUID()), category: null, equipment: null, targetMuscle: null, muscleGroup: null, secondaryMuscles: null,
           translations: [{ language: 'es', name: mapping.name.trim(), instructions: null }],
         }, ledger.accountId).pipe(timeout(45_000)));
         mapping.serverId = result.id; mapping.status = 'migrated'; delete mapping.error;
-      } catch (error) { mapping.status = failureStatus(error); mapping.error = errorMessage(error); }
+        this.diagnostics.record({ category: 'exercise', operation: 'create', result: 'success', elapsedMs: performance.now() - started });
+      } catch (error) { mapping.status = failureStatus(error); mapping.error = errorMessage(error);
+        this.diagnostics.failure('exercise', 'create', error, mapping.status === 'pending' ? 'pending' : 'attention', undefined, started);
+      }
       await this.save(ledger);
     }
   }
@@ -415,15 +436,20 @@ export class LocalToCloudMigrationService {
       if (exerciseIds.some(id => !id)) {
         mapping.status = exerciseMappings.some(exercise => exercise?.status === 'pending') ? 'pending' : 'blocked';
         mapping.error = 'Tiene ejercicios sin resolver o sin confirmar.';
+        this.diagnostics.record({ category: 'reference', operation: 'resolve', result: mapping.status === 'pending' ? 'pending' : 'attention', reason: 'unresolved-reference' });
         await this.save(ledger); continue;
       }
+      const started = this.diagnostics.begin('routine', 'create');
       try {
         const response = await firstValueFrom(this.routinesApi.create({
           clientId: mapping.clientId, name: routine.name.trim(), description: null,
           exercises: routine.exercises.map((exercise, position) => ({ exerciseId: exerciseIds[position]!, position, sets: integerAtLeast(exercise.setsCount, 1), targetReps: ledger.defaults.targetReps, restSeconds: ledger.defaults.restSeconds, notes: null })),
         }, ledger.accountId).pipe(timeout(45_000)));
         mapping.serverId = response.id; mapping.status = 'migrated'; delete mapping.error;
-      } catch (error) { mapping.status = failureStatus(error); mapping.error = errorMessage(error); }
+        this.diagnostics.record({ category: 'routine', operation: 'create', result: 'success', elapsedMs: performance.now() - started });
+      } catch (error) { mapping.status = failureStatus(error); mapping.error = errorMessage(error);
+        this.diagnostics.failure('routine', 'create', error, mapping.status === 'pending' ? 'pending' : 'attention', undefined, started);
+      }
       await this.save(ledger);
     }
   }
@@ -435,6 +461,7 @@ export class LocalToCloudMigrationService {
       if (!mapping || mapping.status !== 'pending' || mapping.snapshotMode !== 'new') continue;
       // Existing web operations may already have committed. Never convert/replay them implicitly.
       if (!mapping.snapshotPayload && (!workout.calendarZone || mapping.serverId)) continue;
+      const started = this.diagnostics.begin('workout', 'create');
       try {
         if (!mapping.snapshotPayload) {
           mapping.snapshotPayload = snapshotPayload(workout, mapping, ledger, workout.calendarZone!);
@@ -456,7 +483,10 @@ export class LocalToCloudMigrationService {
             if (setMapping && remoteSet) { setMapping.status = 'migrated'; setMapping.serverId = remoteSet.id; }
           }
         }
-      } catch (error) { mapping.status = failureStatus(error); mapping.error = errorMessage(error); }
+        this.diagnostics.record({ category: 'workout', operation: 'create', result: mapping.status === 'migrated' ? 'success' : 'attention', reason: mapping.status === 'blocked' ? 'snapshot-different' : undefined, elapsedMs: performance.now() - started });
+      } catch (error) { mapping.status = failureStatus(error); mapping.error = errorMessage(error);
+        this.diagnostics.failure('workout', 'create', error, mapping.status === 'pending' ? 'pending' : 'attention', undefined, started);
+      }
       await this.save(ledger);
     }
   }

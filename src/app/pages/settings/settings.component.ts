@@ -10,6 +10,7 @@ import { AccountSyncService } from '../../migration/account-sync.service';
 import { ExerciseResponse } from '../../exercises/exercise-api.models';
 import { getExerciseName } from '../../exercises/exercise-domain';
 import { WorkoutHistory } from '../../data/workout-history.model';
+import { SyncDiagnosticsService } from '../../migration/sync-diagnostics.service';
 
 interface StorageInfo {
   usage: number | null;
@@ -41,6 +42,20 @@ export class SettingsComponent implements OnInit {
   auth = inject(AuthSessionService);
   migration = inject(LocalToCloudMigrationService);
   accountSync = inject(AccountSyncService);
+  diagnostics = inject(SyncDiagnosticsService);
+  readonly diagnosticCopyMessage = signal<string | null>(null);
+
+  async copyDiagnostics(): Promise<void> {
+    try {
+      await navigator.clipboard.writeText(this.diagnostics.text(this.accountSync.state()));
+      this.diagnosticCopyMessage.set('Diagnóstico copiado.');
+    } catch { this.diagnosticCopyMessage.set('No se pudo copiar. Comprueba el permiso del portapapeles y vuelve a intentarlo.'); }
+  }
+
+  clearDiagnostics(): void {
+    this.diagnostics.clear();
+    this.diagnosticCopyMessage.set('Registro visual vaciado. Los datos y la sincronización siguen intactos.');
+  }
 
   // Read backup status directly from localStorage
   lastBackupTime = computed(() => {
@@ -95,6 +110,7 @@ export class SettingsComponent implements OnInit {
   async retrySync(): Promise<void> {
     const accountId = this.auth.currentUser()?.id;
     if (!accountId) return;
+    this.diagnostics.record({ category: 'migration', operation: 'retry', result: 'pending', source: 'manual' });
     this.migrationBusy.set(true);
     try { await this.migration.resetAutomaticRetries(accountId); this.accountSync.retryNow(); }
     catch { this.migrationError.set('No se pudo preparar el reintento. Tus datos siguen guardados.'); }

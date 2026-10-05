@@ -1,5 +1,6 @@
 import { Injectable, OnDestroy, computed, effect, inject, signal } from '@angular/core';
 import { LocalToCloudMigrationService } from './local-to-cloud-migration.service';
+import { SyncDiagnosticsService } from './sync-diagnostics.service';
 
 export type AccountSyncStatus = 'idle' | 'syncing' | 'retrying' | 'synced' | 'waiting' | 'attention';
 
@@ -15,6 +16,7 @@ export interface AccountSyncState {
 @Injectable({ providedIn: 'root' })
 export class AccountSyncService implements OnDestroy {
   private readonly migration = inject(LocalToCloudMigrationService);
+  private readonly diagnostics = inject(SyncDiagnosticsService);
   private accountId: string | null = null;
   private runId = 0;
   private retryAttempt = 0;
@@ -83,10 +85,12 @@ export class AccountSyncService implements OnDestroy {
 
   /** Drain the current pass before the recovery page takes the cross-tab lock. */
   async pauseForRecovery(): Promise<void> {
+    this.diagnostics.record({ category: 'migration', operation: 'pause', result: 'pending' });
     this.recoveryPaused++;
     this.clearRetry();
     await this.running;
     this.clearRetry();
+    this.diagnostics.retryState.set('Sincronización pausada');
   }
 
   resumeAfterRecovery(): void {
@@ -95,6 +99,10 @@ export class AccountSyncService implements OnDestroy {
   }
 
   stop(): void {
+    if (this.accountId) {
+      this.diagnostics.record({ category: 'migration', operation: 'pause', result: 'pending' });
+      this.diagnostics.retryState.set('Sincronización detenida');
+    }
     this.runId++;
     this.accountId = null;
     this.running = null;
@@ -120,6 +128,8 @@ export class AccountSyncService implements OnDestroy {
     const accountId = this.accountId;
     const runId = ++this.runId;
     this.status.set(this.retryAttempt ? 'retrying' : 'syncing');
+    this.diagnostics.begin('migration', 'reconcile', this.retryAttempt + 1);
+    this.diagnostics.retryState.set('Pasada en curso');
     const task = this.synchronize(accountId, runId).finally(() => {
       if (this.running !== task) return;
       this.running = null;
@@ -144,9 +154,13 @@ export class AccountSyncService implements OnDestroy {
       this.retryAttempt = progress.pending ? this.retryAttempt + 1 : 0;
       this.hasPendingWork = progress.pending > 0;
       this.status.set(progress.attention ? 'attention' : progress.pending ? 'waiting' : 'synced');
+      this.diagnostics.record({ category: 'migration', operation: progress.pending || progress.attention ? 'pause' : 'complete', result: progress.attention ? 'attention' : progress.pending ? 'pending' : 'success' });
+      this.diagnostics.retryState.set(progress.pending ? 'Datos pendientes' : 'Sin reintento programado');
       if (progress.pending) this.scheduleRetry(runId);
-    } catch {
+    } catch (error) {
       if (runId !== this.runId || accountId !== this.accountId) return;
+      this.diagnostics.failure('migration', 'reconcile', error, 'failed', this.retryAttempt + 1);
+      this.diagnostics.retryState.set(globalThis.navigator?.onLine === false ? 'Esperando conectividad' : 'Esperando confirmación');
       this.retryAttempt++;
       this.hasPendingWork = true;
       const progress = await this.refreshProgress(accountId, runId, true);
@@ -163,7 +177,8 @@ export class AccountSyncService implements OnDestroy {
       if ((!final && progressReadId !== this.progressReadId) || runId !== this.runId || accountId !== this.accountId) return null;
       this.applyProgress(progress);
       return progress;
-    } catch {
+    } catch (error) {
+      this.diagnostics.failure('migration', 'verify', error);
       return null;
     }
   }
@@ -187,11 +202,18 @@ export class AccountSyncService implements OnDestroy {
 
   private scheduleRetry(runId: number): void {
     this.clearRetry();
-    if (this.recoveryPaused || this.retryAttempt >= 5) return;
+    if (this.recoveryPaused || this.retryAttempt >= 5) {
+      this.diagnostics.retryState.set(this.recoveryPaused ? 'Sincronización pausada' : 'Límite de reintentos automáticos alcanzado');
+      this.diagnostics.record({ category: 'migration', operation: 'pause', result: this.recoveryPaused ? 'pending' : 'attention', reason: this.retryAttempt >= 5 ? 'retry-budget' : undefined });
+      return;
+    }
     // ponytail: bounded exponential backoff capped at one minute; online events can retry sooner.
     const delay = Math.min(60_000, 5_000 * 3 ** Math.min(this.retryAttempt - 1, 3));
+    this.diagnostics.retryState.set('Reintento programado');
+    this.diagnostics.record({ category: 'migration', operation: 'retry', result: 'retrying', attempt: this.retryAttempt + 1, source: 'automatic' });
     this.retryTimer = setTimeout(() => {
       this.retryTimer = null;
+      this.diagnostics.record({ category: 'migration', operation: 'retry', result: 'pending', attempt: this.retryAttempt + 1, source: 'automatic' });
       if (runId === this.runId && this.accountId) void this.run();
     }, delay);
   }

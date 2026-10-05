@@ -17,7 +17,27 @@
   <button type="submit" [disabled]="migrationBusy() || !historicalZone.trim() || !historicalSelection().length">Confirmo esta zona para {{ historicalSelection().length }} {{ historicalSelection().length === 1 ? 'sesión' : 'sesiones' }}</button>
 </form>
 } @if (syncIssues().length) { <details><summary>Datos que requieren atención ({{ syncIssues().length }})</summary><ul>@for (issue of syncIssues(); track issue.id) { <li><strong>{{ issue.label }}</strong><br>{{ issue.reason }}</li> }</ul></details> }
-<p>El peso corporal y las copias de seguridad se conservan por separado.</p>@if (unresolvedExercises().length) { <div class="resolution-list"><h3>Necesitamos identificar estos ejercicios:</h3>@for (reference of unresolvedExercises(); track reference.key) { <button type="button" (click)="openExerciseResolution(reference)" [disabled]="migrationBusy()"><span>{{ reference.name || 'Ejercicio sin nombre' }}</span><b>Identificar →</b></button> }</div> }@if (migrationError(); as error) { <p class="settings-error" role="alert">{{ error }}</p> }</div></section> }
+<p>El peso corporal y las copias de seguridad se conservan por separado.</p>@if (unresolvedExercises().length) { <div class="resolution-list"><h3>Necesitamos identificar estos ejercicios:</h3>@for (reference of unresolvedExercises(); track reference.key) { <button type="button" (click)="openExerciseResolution(reference)" [disabled]="migrationBusy()"><span>{{ reference.name || 'Ejercicio sin nombre' }}</span><b>Identificar →</b></button> }</div> }@if (migrationError(); as error) { <p class="settings-error" role="alert">{{ error }}</p> }
+<details class="sync-diagnostics">
+  <summary>Diagnóstico de sincronización</summary>
+  <p>Temporal · últimos {{ diagnostics.limit }} eventos · solo en memoria.</p>
+  <dl class="diagnostic-summary">
+    <div><dt>Confirmados / total</dt><dd>{{ accountSync.completed() }} / {{ accountSync.total() }}</dd></div>
+    <div><dt>Pendientes</dt><dd>{{ accountSync.pending() }}</dd></div>
+    <div><dt>Requieren atención</dt><dd>{{ accountSync.attention() }}</dd></div>
+    <div><dt>Última operación correcta</dt><dd>{{ diagnostics.time(diagnostics.lastSuccess()) }}</dd></div>
+    <div><dt>Último error / reintento</dt><dd>{{ diagnostics.time(diagnostics.lastIssue()) }}</dd></div>
+    <div><dt>Operación observada</dt><dd>{{ diagnostics.current() || 'Sin operación observada' }}</dd></div>
+    <div><dt>Reintentos</dt><dd>{{ diagnostics.retryState() }}</dd></div>
+  </dl>
+  <div class="diagnostic-actions"><button type="button" (click)="copyDiagnostics()">Copiar diagnóstico</button><button type="button" (click)="clearDiagnostics()">Limpiar diagnóstico</button></div>
+  @if (diagnosticCopyMessage(); as message) { <p role="status">{{ message }}</p> }
+  <div class="diagnostic-feed" tabindex="0" role="region" aria-label="Eventos de sincronización">
+    @for (event of diagnostics.recentEvents(); track event) { <p>{{ diagnostics.line(event) }}</p> }
+    @empty { <p>No hay eventos en esta sesión.</p> }
+  </div>
+</details>
+</div></section> }
 
     <section class="settings-section"><header><span>03</span><div><h2>{{ t.t('settings.language') }}</h2><p>Idioma de la interfaz.</p></div></header><div class="settings-section__body"><div class="language-switch" role="group" aria-label="Idioma"><button type="button" (click)="setLang('es')" [class.active]="lang() === 'es'" [attr.aria-pressed]="lang() === 'es'">Español</button><button type="button" (click)="setLang('en')" [class.active]="lang() === 'en'" [attr.aria-pressed]="lang() === 'en'">English</button></div></div></section>
 
