@@ -2,6 +2,7 @@ import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { AccountSyncService } from './account-sync.service';
 import { LocalToCloudMigrationService } from './local-to-cloud-migration.service';
+import { SyncDiagnosticsService } from './sync-diagnostics.service';
 
 describe('AccountSyncService', () => {
   let service: AccountSyncService;
@@ -116,6 +117,7 @@ describe('AccountSyncService', () => {
     window.dispatchEvent(new Event('online')); await flushPromises();
     expect(migration.synchronizeAccount).toHaveBeenCalledTimes(6);
     expect(service.status()).toBe('synced');
+    expect(TestBed.inject(SyncDiagnosticsService).events().some(value => value.operation === 'complete' && value.result === 'success')).toBeTrue();
   });
 
   it('does not mark blocked or failed resources as synchronized', async () => {
@@ -183,6 +185,7 @@ describe('AccountSyncService', () => {
     migration.getProgress.and.rejectWith(new Error('IndexedDB unavailable'));
     service.start('account-a'); await flushPromises();
     expect(service.status()).toBe('waiting');
+    expect(TestBed.inject(SyncDiagnosticsService).events().some(value => value.operation === 'retry' && value.source === 'automatic')).toBeTrue();
     expect(migration.synchronizeAccount).toHaveBeenCalledTimes(1);
   });
 

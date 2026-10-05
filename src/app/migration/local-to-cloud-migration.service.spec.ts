@@ -9,6 +9,7 @@ import { ExerciseApiService } from '../exercises/exercise-api.service';
 import { RoutineApiService } from '../routines/routine-api.service';
 import { WorkoutApiService } from '../workouts/workout-api.service';
 import { LocalToCloudMigrationService, routineExerciseKey } from './local-to-cloud-migration.service';
+import { SyncDiagnosticsService } from './sync-diagnostics.service';
 
 describe('LocalToCloudMigrationService', () => {
   let service: LocalToCloudMigrationService;
@@ -86,6 +87,7 @@ describe('LocalToCloudMigrationService', () => {
 
     expect((await service.getLedger('account-a')).routines['routine-1'].clientId).toBe(firstId);
     expect((await service.getLedger('account-a')).status).toBe('needs-resolution');
+    expect(TestBed.inject(SyncDiagnosticsService).events().some(value => value.category === 'reference' && value.reason === 'unresolved-reference' && value.result === 'attention')).toBeTrue();
   });
 
   it('automatically creates a safe local custom exercise and reuses its mapping in its routine', async () => {
@@ -99,6 +101,7 @@ describe('LocalToCloudMigrationService', () => {
     const ledger = await service.getLedger('account-a');
     const mapping = ledger.exercises[routineExerciseKey('routine-1', exerciseId)];
     expect(mapping.status).toBe('migrated');
+    expect(TestBed.inject(SyncDiagnosticsService).events().some(value => value.category === 'exercise' && value.operation === 'create' && value.result === 'success')).toBeTrue();
     expect(exerciseApi.create).toHaveBeenCalledWith(jasmine.objectContaining({ clientId: mapping.clientId, translations: [{ language: 'es', name: 'Mi press', instructions: null }] }), 'account-a');
     expect(routineApi.create).toHaveBeenCalledWith(jasmine.objectContaining({ exercises: [jasmine.objectContaining({ exerciseId: 'server-exercise' })] }), 'account-a');
   });
@@ -499,6 +502,25 @@ describe('Automatic historical account synchronization', () => {
     return workout;
   }
 
+  for (const [name, error, reason, expectedState] of [
+    ['4xx', new HttpErrorResponse({ status: 422, error: { email: 'private@example.test', jwt: 'private-token' } }), 'http-client', 'failed'],
+    ['5xx', new HttpErrorResponse({ status: 503 }), 'http-server', 'pending'],
+    ['network', new HttpErrorResponse({ status: 0 }), 'network', 'pending'],
+    ['timeout', Object.assign(new Error('private-message'), { name: 'TimeoutError' }), 'timeout', 'pending'],
+  ] as const) {
+    it(`observes ${name} without changing the original upload failure state`, async () => {
+      const workout = await historical('failure');
+      api.createMobile.and.returnValue(throwError(() => error));
+      await service.synchronizeAccount('account-a');
+      const diagnostics = TestBed.inject(SyncDiagnosticsService);
+      expect(diagnostics.events().some(value => value.category === 'workout' && value.operation === 'create' && value.reason === reason)).toBeTrue();
+      expect((await service.getLedger('account-a')).workouts[workout.id].status).toBe(expectedState);
+      expect(await db.workoutHistory.get(workout.id)).toEqual(workout);
+      expect(JSON.stringify(diagnostics.events())).not.toContain('private');
+      expect(api.createMobile).toHaveBeenCalledTimes(1);
+    });
+  }
+
   it('automatically recovers unsupported, incomplete and skipped exercise snapshots without current routines', async () => {
     const workout = await historical('historical');
     workout.exercises[0].observation = 'Historical note';
@@ -547,6 +569,7 @@ describe('Automatic historical account synchronization', () => {
     const final = await service.getLedger('account-a');
     expect(final.workouts['partial'].automaticSync?.classification).toBe('C');
     expect(final.workouts['partial'].status).toBe('blocked');
+    expect(TestBed.inject(SyncDiagnosticsService).events().some(value => value.category === 'workout' && value.result === 'attention' && value.reason === 'snapshot-different')).toBeTrue();
     expect(final.workouts['absent'].status).toBe('migrated');
     expect(api.createMobile).toHaveBeenCalledTimes(1);
     expect(remote.length).toBe(2);

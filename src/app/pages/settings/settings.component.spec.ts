@@ -7,6 +7,7 @@ import { LocalToCloudMigrationService } from '../../migration/local-to-cloud-mig
 import { BackupService } from '../../services/backup.service';
 import { TranslationService } from '../../services/translation.service';
 import { SettingsComponent } from './settings.component';
+import { SyncDiagnosticsService } from '../../migration/sync-diagnostics.service';
 
 describe('SettingsComponent account data status', () => {
   let fixture: ComponentFixture<SettingsComponent>;
@@ -68,6 +69,46 @@ describe('SettingsComponent account data status', () => {
     expect(text).toContain('Tus datos están sincronizados');
     expect(text).not.toContain('Guardar datos en tu cuenta');
     expect(text).not.toContain('Ahora no');
+  });
+
+  it('keeps diagnostics collapsed and clearing them does not touch sync or stored data', async () => {
+    fixture.detectChanges(); await fixture.whenStable();
+    const diagnostics = TestBed.inject(SyncDiagnosticsService);
+    diagnostics.record({ category: 'reference', operation: 'resolve', result: 'attention', reason: 'unresolved-reference' });
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.sync-diagnostics').open).toBeFalse();
+    expect(fixture.nativeElement.querySelector('.diagnostic-feed').textContent).toContain('referencia de ejercicio sin resolver');
+    fixture.componentInstance.clearDiagnostics();
+    expect(diagnostics.events().length).toBe(0);
+    expect(migration.resetAutomaticRetries).not.toHaveBeenCalled();
+    expect(TestBed.inject(AccountSyncService).retryNow).not.toHaveBeenCalled();
+  });
+
+  it('copies only sanitized diagnostics with live counts, excluding the account email', async () => {
+    fixture.detectChanges(); await fixture.whenStable();
+    const diagnostics = TestBed.inject(SyncDiagnosticsService);
+    diagnostics.record({ category: 'workout', operation: 'create', result: 'success' });
+    const copy = spyOn(navigator.clipboard, 'writeText').and.resolveTo();
+    await fixture.componentInstance.copyDiagnostics();
+    expect(copy).toHaveBeenCalledTimes(1);
+    expect(copy.calls.mostRecent().args[0]).toContain('Confirmados/total: 3/3');
+    expect(copy.calls.mostRecent().args[0]).not.toContain('athlete@example.com');
+    expect(fixture.componentInstance.diagnosticCopyMessage()).toBe('Diagnóstico copiado.');
+  });
+
+  it('explains a clipboard failure without copying error details or altering sync', async () => {
+    spyOn(navigator.clipboard, 'writeText').and.rejectWith(new Error('secret clipboard context'));
+    await fixture.componentInstance.copyDiagnostics();
+    expect(fixture.componentInstance.diagnosticCopyMessage()).toContain('No se pudo copiar');
+    expect(fixture.componentInstance.diagnosticCopyMessage()).not.toContain('secret');
+    expect(TestBed.inject(AccountSyncService).retryNow).not.toHaveBeenCalled();
+  });
+
+  it('observes the existing manual Retry action without adding another retry or reset', async () => {
+    await fixture.componentInstance.retrySync();
+    expect(migration.resetAutomaticRetries).toHaveBeenCalledOnceWith('account-a');
+    expect(TestBed.inject(AccountSyncService).retryNow).toHaveBeenCalledTimes(1);
+    expect(TestBed.inject(SyncDiagnosticsService).events().filter(value => value.source === 'manual').length).toBe(1);
   });
 
   it('shows a focused exercise task only when intervention is required', async () => {
